@@ -1,0 +1,12 @@
+Hi IOCS!
+
+The following service tags have no valid warranty. Please fix!
+
+|| service tag || model || hostname || shipping date || {% for asset in assets|dictsort:'service_tag' %}
+| [{{ asset.service_tag }}|https://{{ hostname }}/asset/{{ asset.service_tag }}/] | {{ asset.model }} | {{ asset.provision.hostname }} | {{ asset.warranty.shipping_date }} |{% endfor %}
+
+All done? Great! Grab your colleagues and have a milkshake to celebrate!
+
+Yours truly
+
+Socrates

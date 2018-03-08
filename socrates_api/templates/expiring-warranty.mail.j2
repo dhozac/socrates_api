@@ -1,0 +1,13 @@
+Hi IOCS!
+
+The following service tags have warranty entitlements that expire in the next {{ days }} days. Surely you haven't forgotten about them? So get going, extend the warranties for stuff you want to keep and throw out the rest!
+
+|| service tag || model || hostname || shipping date || next end date || entitlements ||{% for asset in assets|dictsort:'service_tag' %}
+| [{{ asset.service_tag }}|https://{{ hostname }}/asset/{{ asset.service_tag }}/] | {{ asset.model }} | {{ asset.provision.hostname }} | {{ asset.warranty.shipping_date }} | {{ asset.warranty.next_end_date }} | {% for k, v in asset.warranty.entitlements.items %}* *{{ k }}* {{ v.description }}: {{ v.end_date }}
+{% endfor %}|{% endfor %}
+
+All done? Great! Grab your colleagues and have a milkshake to celebrate!
+
+Yours truly
+
+Socrates

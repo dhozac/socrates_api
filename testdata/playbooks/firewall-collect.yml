@@ -1,0 +1,9 @@
+---
+- hosts: all
+  connection: local
+  gather_facts: no
+  tasks:
+  - debug: msg="Gather networks into {{ socrates_output }}"
+  - copy:
+      content: '[{"vrf": 0, "network": "10.0.0.0", "length": 24, "domains": {"{{ asset.network.device }}": {"name": "test", "vlan_id": 40}}}]'
+      dest: '{{ socrates_output }}'

@@ -1,0 +1,8 @@
+{% load libvirt %}
+<network>
+  <name>{{ name }}</name>
+  <forward mode="bridge" />
+  <bridge name="br{{ network|network_to_vlan_id:asset.service_tag }}">
+    <interface dev="{{ interface }}.{{ network|network_to_vlan_id:asset.service_tag }}" />
+  </bridge>
+</network>

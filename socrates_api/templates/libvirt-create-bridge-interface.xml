@@ -1,0 +1,11 @@
+{% load libvirt %}
+<interface type="bridge" name="br{{ network|network_to_vlan_id:asset.service_tag }}">
+  <start mode="onboot"/>
+  <bridge stp="off">
+    <interface type="vlan" name="{{ interface }}.{{ network|network_to_vlan_id:asset.service_tag }}">
+      <vlan tag="{{ network|network_to_vlan_id:asset.service_tag }}">
+        <interface name="{{ interface }}"/>
+      </vlan>
+    </interface>
+  </bridge>
+</interface>

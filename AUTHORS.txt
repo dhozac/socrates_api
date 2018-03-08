@@ -1,0 +1,9 @@
+Socrates was built by the IT Operations Core Services Sysadmins team
+at Klarna Bank AB, consisting of:
+Adam Nyberg
+Andreas Calminder
+Daniel Hokka Zakrisson
+Kim Källén
+Marcus Hall
+Moritz Rogalli
+Tobias Bollmark

@@ -1,0 +1,5 @@
+{% load libvirt %}
+<interface type='network'>
+  <source network='{{ network.asset_domain.name }}' />
+  <model type='virtio' />
+</interface>

@@ -1,0 +1,13 @@
+{% if pool_type == "dir" or pool_type == "fs" %}
+<volume>
+  <name>{{ asset.provision.hostname }}_{{ disk_name }}.raw</name>
+  <allocation>0</allocation>
+  <capacity unit="B">{{ disk.size }}</capacity>
+</volume>
+{% elif pool_type == "logical" %}
+<volume type="block">
+  <name>{{ asset.provision.hostname }}_{{ disk_name }}</name>
+  <allocation unit="B">{{ disk.size }}</allocation>
+  <capacity unit="B">{{ disk.size }}</capacity>
+</volume>
+{% endif %}

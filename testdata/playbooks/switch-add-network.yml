@@ -1,0 +1,18 @@
+---
+- hosts: all
+  connection: local
+  gather_facts: no
+  tasks:
+  - fail: msg="Missing variables"
+    when: asset is not defined or network is not defined
+  - command: cat {{ playbook_dir }}/../switch.picker
+    register: state
+    failed_when: false
+  - command: python -c 'print {% if state.rc == 0 %}{{ state.stdout }}{% else %}0{% endif %} + 1'
+    register: picker
+  - copy:
+      content: '{"domain": "{{ asset.switch.domain }}", "name": "{{ network.ipam.name }}", "vlan_id": {{ picker.stdout }}}'
+      dest: "{{ socrates_output }}"
+  - copy:
+      content: "{{ picker.stdout }}"
+      dest: "{{ playbook_dir }}/../switch.picker"

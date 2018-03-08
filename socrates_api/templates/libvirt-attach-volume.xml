@@ -1,0 +1,7 @@
+{% load libvirt %}
+<disk type="volume" device="disk">
+  <driver name="qemu" type="raw" />
+  <source pool="{{ vol.storagePoolLookupByVolume.name }}" volume="{{ vol.name }}" />
+  <target dev="vd{{ disk_id|libvirt_device_letter }}" bus="virtio" />
+  <serial>{{ disk.by_id|default:disk_name }}</serial>
+</disk>

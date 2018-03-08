@@ -1,0 +1,9 @@
+---
+- hosts: all
+  connection: local
+  gather_facts: no
+  tasks:
+  - debug: msg="Gather networks into {{ socrates_output }}"
+  - copy:
+      content: '[{"vlan_id": 40, "name": "test"}, {"vlan_id": 41, "name": "test2"}]'
+      dest: '{{ socrates_output }}'

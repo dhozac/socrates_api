@@ -1,0 +1,8 @@
+---
+- hosts: all
+  connection: local
+  gather_facts: no
+  tasks:
+  - debug: msg="Switch reconfigured"
+  - fail: msg="Missing variables"
+    when: asset is not defined
