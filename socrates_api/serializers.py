@@ -812,7 +812,9 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
                     self.firewalls[firewall['network']['device']].append(firewall)
 
         token = str(uuid.uuid4())
-        tasks = [rethinkdb_lock.si("network-management", token=token)]
+        pre_tasks = [rethinkdb_lock.si("network-management", token=token)]
+        tasks = []
+        post_tasks = []
         for domain in domains:
             if domain in self.vmclusters:
                 tasks.append(task.si(self.vmclusters[domain], network))
@@ -820,7 +822,11 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
                     tasks.append(asset_get.si(hypervisor))
                     tasks.append(reconfigure_network_port.s())
             elif domain in self.switches:
-                tasks.insert(1, task.si(self.switches[domain][0], network))
+                t = task.si(self.switches[domain][0], network)
+                if task.__name__ == 'remove_network':
+                    post_tasks.append(t)
+                else:
+                    pre_tasks.append(t)
                 for switch in self.switches[domain]:
                     if 'nics' in switch:
                         tasks.append(reconfigure_network_port.si(switch))
@@ -829,7 +835,9 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
                 for firewall in self.firewalls[domain]:
                     tasks.append(reconfigure_network_port.si(firewall))
 
-        tasks.append(rethinkdb_unlock.si(name="network-management", token=token))
+        post_tasks.append(rethinkdb_unlock.si(name="network-management", token=token))
+
+        tasks = pre_tasks + tasks + post_tasks
 
         if len(tasks) > 2:
             chain(*tasks).apply_async()
