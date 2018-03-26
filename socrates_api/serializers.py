@@ -567,7 +567,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
         return data
 
     def create_link(self, instance):
-        return reverse('asset_detail_id', kwargs={'id': instance['id']}, request=self.context.get('request'))
+        return reverse('socrates_api:asset_detail_id', kwargs={'id': instance['id']}, request=self.context.get('request'))
 
 
 class OperatingSystemSerializer(RethinkSerializer):
@@ -584,7 +584,7 @@ class OperatingSystemSerializer(RethinkSerializer):
         indices = ['name']
 
     def create_link(self, instance):
-        return reverse('os_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
+        return reverse('socrates_api:os_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
 
 class FirewallAddressSerializer(serializers.Serializer):
     negated = serializers.BooleanField(required=False)
@@ -652,7 +652,7 @@ class FirewallAddressGroupSerializer(HistorySerializerMixin):
         return super(FirewallAddressGroupSerializer, self).delete()
 
     def create_link(self, instance):
-        return reverse('firewall_addressgroup_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
+        return reverse('socrates_api:firewall_addressgroup_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
 
 class FirewallRuleSerializer(serializers.Serializer):
     type = serializers.ChoiceField(required=True, choices=['ingress', 'egress'])
@@ -722,7 +722,7 @@ class FirewallRuleSetSerializer(HistorySerializerMixin):
         return ruleset
 
     def create_link(self, instance):
-        return reverse('firewall_ruleset_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
+        return reverse('socrates_api:firewall_ruleset_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
 
 class NetworkDomainSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
@@ -901,7 +901,7 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
         )
 
     def create_link(self, instance):
-        return reverse('network_detail', kwargs={
+        return reverse('socrates_api:network_detail', kwargs={
             'vrf': instance['vrf'],
             'network': instance['network'],
             'length': instance['length']
@@ -924,7 +924,7 @@ class QuotaSerializer(RethinkSerializer):
         indices = ['group']
 
     def create_link(self, instance):
-        return reverse('quota_detail', kwargs={'slug': instance['group']}, request=self.context.get('request'))
+        return reverse('socrates_api:quota_detail', kwargs={'slug': instance['group']}, request=self.context.get('request'))
 
 EVENT_TYPES = ['ready', 'provisioned', 'maintenance_start', 'maintenance_end', 'deleted', 'reprovisioned']
 class EventSerializer(RethinkSerializer):
@@ -1014,7 +1014,7 @@ class LoadBalancerIRuleSerializer(HistorySerializerMixin):
         return load_balancer_irule
 
     def create_link(self, instance):
-        return reverse('loadbalancer_irule_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
+        return reverse('socrates_api:loadbalancer_irule_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
 
 def validate_irule_name(name):
     try:
@@ -1089,4 +1089,4 @@ class LoadBalancerSerializer(HistorySerializerMixin):
         return super(LoadBalancerSerializer, self).delete()
 
     def create_link(self, instance):
-        return reverse('loadbalancer_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
+        return reverse('socrates_api:loadbalancer_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))

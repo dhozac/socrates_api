@@ -963,33 +963,33 @@ class APITests(BaseTests):
         group = Group.objects.get(name='group')
         luser.groups.add(group)
 
-        response = self.client.get(reverse('loadbalancer_irule_list'),
+        response = self.client.get(reverse('socrates_api:loadbalancer_irule_list'),
             HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 200)
         data = json.loads(response.content)
         self.assertEqual(data, [])
 
-        response = self.client.post(reverse('loadbalancer_irule_list'), data=json.dumps({
+        response = self.client.post(reverse('socrates_api:loadbalancer_irule_list'), data=json.dumps({
                 'name': "irule1",
                 'code': 'return false',
             }), content_type="application/json", HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 201)
 
-        response = self.client.get(reverse('loadbalancer_irule_list'),
+        response = self.client.get(reverse('socrates_api:loadbalancer_irule_list'),
             HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 200)
         data = json.loads(response.content)
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['name'], 'irule1')
 
-        response = self.client.get(reverse('loadbalancer_irule_list'),
+        response = self.client.get(reverse('socrates_api:loadbalancer_irule_list'),
             HTTP_AUTHORIZATION=lauth)
         self.assertResponse(response, 200)
         data = json.loads(response.content)
         self.assertEqual(data, [])
 
         for a, c in [(lauth, 403), (auth, 200), (lauth, 200)]:
-            response = self.client.patch(reverse('loadbalancer_irule_detail',
+            response = self.client.patch(reverse('socrates_api:loadbalancer_irule_detail',
                     kwargs={'slug': 'irule1'}),
                 data=json.dumps({
                     'permissions': {
@@ -998,7 +998,7 @@ class APITests(BaseTests):
                 }), content_type="application/json", HTTP_AUTHORIZATION=a)
             self.assertResponse(response, c)
 
-        response = self.client.get(reverse('loadbalancer_irule_list'),
+        response = self.client.get(reverse('socrates_api:loadbalancer_irule_list'),
             HTTP_AUTHORIZATION=lauth)
         self.assertResponse(response, 200)
         data = json.loads(response.content)
@@ -1012,7 +1012,7 @@ class APITests(BaseTests):
         group = Group.objects.get(name='group')
         luser.groups.add(group)
 
-        response = self.client.get(reverse('loadbalancer_list'),
+        response = self.client.get(reverse('socrates_api:loadbalancer_list'),
             HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 200)
         data = json.loads(response.content)
@@ -1030,7 +1030,7 @@ class APITests(BaseTests):
             self.assertResponse(response, 201)
             ip1 = json.loads(response.content)['ip']
 
-        response = self.client.post(reverse('loadbalancer_list'), data=json.dumps({
+        response = self.client.post(reverse('socrates_api:loadbalancer_list'), data=json.dumps({
                 'cluster': 'lbcluster',
                 'name': "service1",
                 'members': [{'name': 'lb-server1.domain', 'port': 443}],
@@ -1040,21 +1040,21 @@ class APITests(BaseTests):
             }), content_type="application/json", HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 201)
 
-        response = self.client.get(reverse('loadbalancer_list'),
+        response = self.client.get(reverse('socrates_api:loadbalancer_list'),
             HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 200)
         data = json.loads(response.content)
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['name'], 'service1')
 
-        response = self.client.get(reverse('loadbalancer_list'),
+        response = self.client.get(reverse('socrates_api:loadbalancer_list'),
             HTTP_AUTHORIZATION=lauth)
         self.assertResponse(response, 200)
         data = json.loads(response.content)
         self.assertEqual(data, [])
 
         for a, c in [(lauth, 403), (auth, 200), (lauth, 200)]:
-            response = self.client.patch(reverse('loadbalancer_detail',
+            response = self.client.patch(reverse('socrates_api:loadbalancer_detail',
                     kwargs={'slug': 'service1'}),
                 data=json.dumps({
                     'permissions': {
@@ -1063,21 +1063,21 @@ class APITests(BaseTests):
                 }), content_type="application/json", HTTP_AUTHORIZATION=a)
             self.assertResponse(response, c)
 
-        response = self.client.get(reverse('loadbalancer_list'),
+        response = self.client.get(reverse('socrates_api:loadbalancer_list'),
             HTTP_AUTHORIZATION=lauth)
         self.assertResponse(response, 200)
         data = json.loads(response.content)
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['name'], 'service1')
 
-        response = self.client.delete(reverse('loadbalancer_detail',
+        response = self.client.delete(reverse('socrates_api:loadbalancer_detail',
                 kwargs={'slug': 'service1'}), HTTP_AUTHORIZATION=lauth)
         self.assertResponse(response, 204)
 
     def test_firewall_ruleset(self):
         user, auth = self.create_basic_objects()
 
-        response = self.client.post(reverse('firewall_addressgroup_list'), data=json.dumps({
+        response = self.client.post(reverse('socrates_api:firewall_addressgroup_list'), data=json.dumps({
                 'name': 'testgroup',
                 'addresses': [
                     {'vrf': 0, 'address': '10.0.0.4', 'length': 32},
@@ -1085,7 +1085,7 @@ class APITests(BaseTests):
             }), content_type="application/json", HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 201)
 
-        response = self.client.patch(reverse('firewall_addressgroup_detail', kwargs={'slug': 'testgroup'}), data=json.dumps({
+        response = self.client.patch(reverse('socrates_api:firewall_addressgroup_detail', kwargs={'slug': 'testgroup'}), data=json.dumps({
                 'addresses': [
                     {'vrf': 0, 'address': '10.0.0.4', 'length': 32},
                     {'vrf': 0, 'address': '10.0.0.5', 'length': 32},
@@ -1093,7 +1093,7 @@ class APITests(BaseTests):
             }), content_type="application/json", HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 200)
 
-        response = self.client.post(reverse('firewall_ruleset_list'), data=json.dumps({
+        response = self.client.post(reverse('socrates_api:firewall_ruleset_list'), data=json.dumps({
                 'name': 'ruleset1',
                 'rules': [
                     {
@@ -1110,7 +1110,7 @@ class APITests(BaseTests):
             }), content_type="application/json", HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 201)
 
-        response = self.client.post(reverse('firewall_ruleset_list'), data=json.dumps({
+        response = self.client.post(reverse('socrates_api:firewall_ruleset_list'), data=json.dumps({
                 'name': 'ruleset2',
                 'rulesets': ['ruleset1'],
                 'rules': [
@@ -1136,7 +1136,7 @@ class APITests(BaseTests):
             }), content_type="application/json", HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 201)
 
-        response = self.client.patch(reverse('network_detail', kwargs={
+        response = self.client.patch(reverse('socrates_api:network_detail', kwargs={
                 'vrf': 0, 'network': '10.0.0.0', 'length': 24
             }), data=json.dumps({
                 'ruleset': 'ruleset2'
