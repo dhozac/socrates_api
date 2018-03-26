@@ -25,7 +25,7 @@ from rest_framework.exceptions import PermissionDenied
 from django_rethink import *
 from socrates_api.tasks import *
 from socrates_api.serializers import *
-from socrates.celery import app
+from celery import current_app
 import logging
 import time
 import gevent
@@ -437,12 +437,12 @@ class CeleryTaskQueueDetailView(RethinkAPIMixin, generics.RetrieveUpdateAPIView)
 class TaskInvokeView(RethinkAPIMixin, APIView):
     permission_classes = (permissions.IsAuthenticated, permissions.IsAdminUser)
     def post(self, request, format=None, slug=None):
-        if slug not in app.tasks:
+        if slug not in current_app.tasks:
             return Response(status=status.HTTP_404_FILE_NOT_FOUND)
         args = request.data.get("args", [])
         kwargs = request.data.get("kwargs", {})
         logger.info("%s invoked %s(%r, %r)" % (request.user.username, slug, args, kwargs))
-        app.tasks[slug].apply_async(args=args, kwargs=kwargs)
+        current_app.tasks[slug].apply_async(args=args, kwargs=kwargs)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class UserInfoView(APIView):
