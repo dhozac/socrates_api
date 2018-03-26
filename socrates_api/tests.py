@@ -93,9 +93,14 @@ class BaseTests(TestCase):
             class testclient_with_json(object):
                 def __init__(self, response):
                     self.response = response
+                def __loads(self):
+                    try:
+                        return json.loads(self.response.content)
+                    except ValueError:
+                        raise ValueError("No JSON found in: %r" % self.response.content)
                 def __getattr__(self, attr):
                     if attr == 'json':
-                        return lambda: json.loads(self.response.content)
+                        return self.__loads
                     else:
                         return getattr(self.response, attr)
             class requests_to_testclient(object):
