@@ -137,3 +137,35 @@ REST_FRAMEWORK = {
 SOCRATES_OOB_DOMAIN = 'oob.example.com'
 SOCRATES_CHANGEFEED_MAX_WAIT = 30
 CELERY_RESULT_EXPIRES = 86400
+
+LOGGING = {
+    'version': 1,
+    'handlers': {
+        'stdout': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['stdout'],
+            'propagate': False,
+            'level': 'DEBUG',
+        },
+        'socrates_api': {
+            'handlers': ['stdout'],
+            'propagate': False,
+            'level': 'DEBUG',
+        },
+        'bonk': {
+            'handlers': ['stdout'],
+            'propagate': False,
+            'level': 'DEBUG',
+        },
+        'django_rethink': {
+            'handlers': ['stdout'],
+            'propagate': False,
+            'level': 'DEBUG',
+        },
+    },
+}
