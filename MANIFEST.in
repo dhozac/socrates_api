@@ -1,2 +1,2 @@
-include requirements.txt
+include *.txt *.md
 recursive-include socrates_api/templates *
