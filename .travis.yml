@@ -1,0 +1,21 @@
+language: python
+sudo: required
+dist: trusty
+python:
+- '2.7'
+install: pip install tox-travis
+before_script:
+- wget http://deb.hozac.com/dhozac/ubuntu/trusty/rethinkdb_2.3.6+15+g8a9687+dirty~0_amd64.deb
+- sudo apt install ./rethinkdb_2.3.6+15+g8a9687+dirty~0_amd64.deb
+- sudo cp /etc/rethinkdb/default.conf.sample /etc/rethinkdb/instances.d/instance1.conf
+- sudo invoke-rc.d rethinkdb start
+env:
+- HANDLE_COVERAGE=coveralls
+script: tox
+deploy:
+  provider: pypi
+  username: dhozac
+  password:
+    secure: OdpYV2yDgrVn/m6LjoHvdszZA59w7E5TVFBBuk3komCXVuol58oNGTGVWZTw0jjo4m8BAftmtyVxlbqxeSA0tITURc0homQFo06DXIzp4qhArtWnq/BpbzO1IvOyzBrd67XUkcCvsyJozRWxi84917Mm/CXfrRx4C0mWAiVIczIiYlSZ+PNdmJHDDbTMIGSDmlXVHOlp4d7oVkIsP9YU2Ck12uUfwHCJapsXxTO+4/n/wwJS9R1W9fB9Yxqt13VNVQmIWN5dYtSnG2lE4GY0NmG5XSl7LszJUl/3SWyLiA1gZGzcNwCl1GzX4lXctDdQDjrpVUdE2khcxajSJzt35Qw00T0m9xa9eUfdzpBOzX7IR/tgEBy4L4IndSKiAacR7KBN4okf9S0SgNZwLWLojKuaKBXtgr5LNMXa0xmwhImRIctuj/EaLEf00cawcKqZSLhoQv4b7WK9mEfcnLFEhWJVGzk0O0UNF9iDpL/vQDQnqcblm8AL93gn9jLQbU8d2igeFtnlBVdnGKEBQB3VpabXnkktMRM/FFpyETuDYRcmJz0tjBJlToK9nZcrnxbo9cfMyEcF/T+5OWdvyfxri7z9pO/X2uLMCifL3Jp3/+OCKjTLkx6pDKHyifdsxC4gPKtNFuf2nsrUhJqJ9cOBX53YjGd2Uo7PSDdFvggZTZs=
+  on:
+    tags: true
