@@ -187,7 +187,6 @@ def extract_asset_from_raw(service_tag, final_step=False):
 
     enclosures = []
     if data['vendor'].lower().startswith("dell"):
-        data['warranty'] = _extract_dell_warranty_from_raw(service_tag)
         data['storage'] = []
         for i in raw_asset['intake']['storage']:
             controller = {'id': i['ID'], 'name': i['Name']}
@@ -395,12 +394,17 @@ def extract_asset_from_raw(service_tag, final_step=False):
             enclosure_asset.is_valid(raise_exception=True)
             enclosure_asset.save()
 
+    # warranty lookup
+    if asset.get('supportvendor', '') == 'dell':
+        data['warranty'] = _extract_dell_warranty_from_raw(service_tag)
+    # add more vendors here if they supply a warranty API
+
     return True
 
 @shared_task
 def extract_warranty_from_raw(asset):
     update = {'log' : 'Updating warranty from raw'}
-    if 'vendor' in asset.keys() and asset['vendor'].lower().startswith("dell"):
+    if 'supportvendor' in asset.keys() and asset['supportvendor'] == 'dell':
         try:
             update['warranty'] = _extract_dell_warranty_from_raw(asset['service_tag'])
         except Exception as e:
@@ -449,7 +453,7 @@ def batch_update_warranties_from_vendors():
     return True
 
 def _batch_update_warranties_from_dell():
-    service_tags = list(x['service_tag'] for x in r.table('assets').filter(r.row['state'] != 'deleted').filter({'vendor': 'Dell Inc.'}).run(get_connection()))
+    service_tags = list(x['service_tag'] for x in r.table('assets').filter(r.row['state'] != 'deleted').filter({'supportvendor': 'dell'}).run(get_connection()))
     return _call_dell_warranty_api(service_tags)
 
 def _call_dell_warranty_api(service_tags):
@@ -481,11 +485,11 @@ def _retry_invalid_warranties_from_dell():
     service_tags = []
     no_warranty_assets = get_no_warranty_assets()
     for a in no_warranty_assets:
-        if a.get('vendor', '') == 'Dell Inc.':
+        if a.get('supportvendor', '') == 'dell':
             service_tags.append(a['service_tag'])
     missing_warranty_assets = get_missing_warranty_assets()
     for a in missing_warranty_assets:
-        if a.get('vendor', '') == 'Dell Inc.':
+        if a.get('supportvendor', '') == 'dell':
             service_tags.append(a['service_tag'])
     _call_dell_warranty_api(service_tags)
 
@@ -516,7 +520,7 @@ def _send_dell_warranty_api_batch(batch):
 
 @shared_task
 def update_warranty_from_vendor(asset):
-    if asset['vendor'].lower().startswith('dell'):
+    if asset['supportvendor'] == 'dell':
         return _call_dell_warranty_api([asset['service_tag']])
     return False
 
