@@ -395,7 +395,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
             enclosure_asset.save()
 
     # warranty lookup
-    if asset.get('supportvendor', '') == 'dell':
+    if data.get('supportvendor', '') == 'dell':
         data['warranty'] = _extract_dell_warranty_from_raw(service_tag)
     # add more vendors here if they supply a warranty API
 
