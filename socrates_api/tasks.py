@@ -352,6 +352,13 @@ def extract_asset_from_raw(service_tag, final_step=False):
             card['subdevice'] = pci['subdevice']
         data['cards'].append(card)
 
+    # warranty lookup
+    if data.get('vendor', '') != '':
+        data['supportvendor'] = data['vendor'].lower().split(' ')[0]
+        if data.get('supportvendor') == 'dell':
+            data['warranty'] = _extract_dell_warranty_from_raw(service_tag)
+        # add more vendors here if they supply a warranty API
+
     data['log'] = 'Extracting raw data'
     if instance is not None:
         data['version'] = instance['version']
@@ -393,11 +400,6 @@ def extract_asset_from_raw(service_tag, final_step=False):
             })
             enclosure_asset.is_valid(raise_exception=True)
             enclosure_asset.save()
-
-    # warranty lookup
-    if data.get('supportvendor', '') == 'dell':
-        data['warranty'] = _extract_dell_warranty_from_raw(service_tag)
-    # add more vendors here if they supply a warranty API
 
     return True
 
@@ -520,7 +522,7 @@ def _send_dell_warranty_api_batch(batch):
 
 @shared_task
 def update_warranty_from_vendor(asset):
-    if asset['supportvendor'] == 'dell':
+    if asset.get('supportvendor', '') == 'dell':
         return _call_dell_warranty_api([asset['service_tag']])
     return False
 
