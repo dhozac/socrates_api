@@ -354,10 +354,14 @@ def extract_asset_from_raw(service_tag, final_step=False):
 
     # warranty lookup
     if data.get('vendor', '') != '':
-        data['supportvendor'] = settings.SUPPORTVENDORS[data['vendor']]
-        if data.get('supportvendor') == 'dell':
-            data['warranty'] = _extract_dell_warranty_from_raw(service_tag)
-        # add more vendors here if they supply a warranty API
+        try:
+            if asset_get(service_tag).get('supportvendor', '') != '':
+                data['supportvendor'] = asset_get(service_tag).get('supportvendor')
+        except r.errors.ReqlNonExistenceError:
+            data['supportvendor'] = settings.SUPPORTVENDORS[data['vendor']]
+    if data.get('supportvendor') == 'dell':
+        data['warranty'] = _extract_dell_warranty_from_raw(service_tag)
+    # add more vendors here if they supply a warranty API
 
     data['log'] = 'Extracting raw data'
     if instance is not None:
