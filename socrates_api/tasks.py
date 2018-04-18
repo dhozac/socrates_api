@@ -354,7 +354,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
 
     # warranty lookup
     if data.get('vendor', '') != '':
-        data['supportvendor'] = data['vendor'].lower().split(' ')[0]
+        data['supportvendor'] = settings.SUPPORTVENDORS[data['vendor']]
         if data.get('supportvendor') == 'dell':
             data['warranty'] = _extract_dell_warranty_from_raw(service_tag)
         # add more vendors here if they supply a warranty API
