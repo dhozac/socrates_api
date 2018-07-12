@@ -914,7 +914,7 @@ class APITests(BaseTests):
         user2.groups.add(group2)
 
         response = self.client.patch('/asset/TESTASS', data=json.dumps({'log': 'New manager', 'version': asset['version'], 'managers': ['group2']}), content_type="application/json", HTTP_AUTHORIZATION=auth2)
-        self.assertResponse(response, 400)
+        self.assertResponse(response, 202)
 
         response = self.client.get('/review/', HTTP_AUTHORIZATION=auth2)
         self.assertResponse(response, 200)
