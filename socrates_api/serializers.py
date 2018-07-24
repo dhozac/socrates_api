@@ -426,6 +426,9 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
         if new_asset.get('provisioning', False):
             if 'provision' not in new_asset:
                 raise serializers.ValidationError("'provision' is required when provisioning is set")
+            if (getattr(settings, 'SOCRATES_INVENTORY_ID_REQUIRED', False) and
+                    'inventory_id' not in new_asset):
+                raise serializers.ValidationError("'inventory_id' is required when provisioning is set")
 
             required_keys = ['hostname', 'vlan']
             if new_asset['asset_type'] not in ('network', 'storage'):
