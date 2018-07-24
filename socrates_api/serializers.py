@@ -309,6 +309,8 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
         physically = data.get('physically', False) and self.context['request'].user.is_superuser
         username = self.context['request'].user.username
 
+        if self.instance.get('decommissioning', False):
+            raise serializers.ValidationError("delete is already in progress")
         if self.instance.get('needs_review', False):
             raise serializers.ValidationError("'needs_review' field cannot be set when deleting an asset")
 
