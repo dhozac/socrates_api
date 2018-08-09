@@ -767,7 +767,7 @@ def ipmi_ping(self, asset):
 
 @shared_task(bind=True)
 def ipmi_power_state(self, asset):
-    if asset['asset_type'] == 'server':
+    if asset['asset_type'] == 'server' and asset.get('oob'):
         try:
             return ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], lambda session: session.get_power()['powerstate'])
         except IPMIException as e:
@@ -795,6 +795,8 @@ def ipmi_power_state(self, asset):
             return ret
         elif asset['asset_subtype'] == 'libvirt':
             return ipmi_power_state_libvirt(asset)
+    else:
+        return 'unknown (asset missing oob?)'
 
 def reconfigure_network_port_vmware(asset):
     if asset['provisioning']:
