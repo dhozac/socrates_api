@@ -768,10 +768,13 @@ def ipmi_ping(self, asset):
 @shared_task(bind=True)
 def ipmi_power_state(self, asset):
     if asset['asset_type'] == 'server':
-        try:
-            return ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], lambda session: session.get_power()['powerstate'])
-        except IPMIException as e:
-            self.retry(exc=e, countdown=3, max_retries=40)
+        if asset.get('oob'):
+            try:
+                return ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], lambda session: session.get_power()['powerstate'])
+            except IPMIException as e:
+                self.retry(exc=e, countdown=3, max_retries=40)
+        else:
+            return 'unknown (asset missing oob)'
     elif asset['asset_type'] == 'vm':
         if asset['asset_subtype'] == 'vmware':
             parent_asset = AssetSerializer.get(service_tag=asset['parent'])
