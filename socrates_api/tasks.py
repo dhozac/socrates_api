@@ -1945,7 +1945,7 @@ def collect_firewall_networks(asset):
 @shared_task
 def collect_networks():
     networks = 0
-    for asset in AssetSerializer.filter(asset_type='network', asset_subtype='firewall', state='in-use'):
+    for asset in AssetSerializer.filter(r.row.has_fields({'network': {'device': True}, 'url': True})):
         networks += collect_firewall_networks(asset)
     for asset in AssetSerializer.filter(r.row.has_fields({'switch': True, 'url': True})):
         networks += collect_switch_networks(asset)
