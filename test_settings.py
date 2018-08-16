@@ -169,3 +169,9 @@ LOGGING = {
         },
     },
 }
+
+SUPPORTVENDORS = {
+        'Dell Inc.': 'dell',
+        'HP': 'hp',
+        'IBM': 'ibm'
+        }

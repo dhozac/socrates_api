@@ -144,6 +144,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
     cpu = serializers.ListField(required=False)
     ram = serializers.DictField(required=False)
     vendor = serializers.CharField(required=False)
+    supportvendor = serializers.CharField(required=False)
     model = serializers.CharField(required=False)
     oob = serializers.DictField(required=False)
     nics = serializers.ListField(child=serializers.DictField(), required=False)
