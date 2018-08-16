@@ -811,11 +811,10 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
                 self.switches[switch['switch']['domain']].append(switch)
         if not hasattr(self, 'firewalls'):
             self.firewalls = {}
-            for firewall in AssetSerializer.filter(state='in-use', asset_type='network', asset_subtype='firewall'):
-                if 'network' in firewall and 'device' in firewall['network']:
-                    if firewall['network']['device'] not in self.firewalls:
-                        self.firewalls[firewall['network']['device']] = []
-                    self.firewalls[firewall['network']['device']].append(firewall)
+            for firewall in AssetSerializer.filter(r.row.has_fields({'network': {'device': True}, 'url': True})):
+                if firewall['network']['device'] not in self.firewalls:
+                    self.firewalls[firewall['network']['device']] = []
+                self.firewalls[firewall['network']['device']].append(firewall)
 
         token = str(uuid.uuid4())
         pre_tasks = [rethinkdb_lock.si("network-management", token=token)]

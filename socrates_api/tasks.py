@@ -2675,7 +2675,7 @@ def _firewall_group_manage_ansible(asset, name, url, group):
         extra_vars={'url': url, 'group': group})
 
 def _firewall_group_manage(group, name):
-    for asset in AssetSerializer.filter(state='in-use', asset_type='network', asset_subtype='firewall'):
+    for asset in AssetSerializer.filter(r.row.has_fields({'network': {'device': True}, 'url': True})):
         if 'url' not in asset:
             continue
         url = urlparse.urlparse(asset['url'])
