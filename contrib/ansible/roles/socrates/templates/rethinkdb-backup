@@ -1,0 +1,35 @@
+#!/bin/bash
+
+cd /srv/rethinkexports
+stamp=$(date +%Y%m%dT%H%M%S)
+name="rethinkdb_export_$stamp"
+rethinkdb-export -e socrates -d "$name"
+tar -czf "$name".tar.gz "$name"
+rm -fr "$name"
+
+maxage=$(( $(date +%s) - 86400 * 21 ))
+oneperdayage=$(( $(date +%s) - 86400 * 7 ))
+declare -a days
+for i in $(ls -1tr); do
+    age=$(stat -c '%Y' "$i")
+    if test $age -lt $maxage; then
+        rm -f "$i"
+    elif test $age -lt $oneperdayage; then
+        thisday=$(date -d "@$age" '+%Y%m%d')
+        for day in "${days[@]}"; do
+            if test "$day" = "$thisday"; then
+                rm -f "$i"
+                break
+            fi
+        done
+        if test -e "$i"; then
+            days=( "${days[@]}" "$thisday" )
+        fi
+    fi
+done
+
+env AWS_ACCESS_KEY_ID={{ socrates_s3_access_key }} \
+    AWS_SECRET_ACCESS_KEY={{ socrates_s3_secret_key }} \
+    aws --endpoint-url https://s3-endpoint.fqdn.tld/ \
+        --ca-bundle /etc/pki/tls/certs/ca-bundle.crt \
+        s3 sync --delete . s3://socrates/{{ inventory_hostname_short }}

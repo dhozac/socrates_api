@@ -1,0 +1,18 @@
+[Unit]
+Description=Celery workers
+After=network.target rethinkdb@socrates.service
+
+[Service]
+User=celery
+Group=celery
+EnvironmentFile=-/etc/celery/celery.conf
+WorkingDirectory=/var/tmp
+Restart=always
+ExecStart=/usr/bin/celery worker \
+    -A $CELERY_APP --pidfile=${CELERYD_PID_FILE} \
+    --loglevel=${CELERYD_LOG_LEVEL} $CELERYD_OPTS -Ofair
+KillMode=mixed
+TimeoutStopSec=600s
+
+[Install]
+WantedBy=multi-user.target

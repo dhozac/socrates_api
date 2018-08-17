@@ -1,0 +1,32 @@
+#!/usr/bin/python -tt
+
+import sys
+import optparse
+import rethinkdb as r
+import socket
+
+parser = optparse.OptionParser()
+parser.add_option("-u", "--unacked", dest="unacked", action="store_true")
+
+options, args = parser.parse_args()
+
+conn = r.connect(host='127.0.0.1', db='socrates')
+queryset = r.table('celery_taskmeta').filter({'status': 'FAILURE'})
+if options.unacked:
+    queryset = queryset.filter({'ops_acked': False}, default=True)
+length = queryset.count().run(conn)
+
+def print_msg(msg):
+    print("%s | tasks=%d" % (msg, length))
+
+servername = r.db('rethinkdb').table('server_status').filter({'network': {'hostname': socket.gethostname()}}).nth(0).run(conn)['name']
+if r.db('rethinkdb').table('table_config').filter({'db': 'socrates', 'name': 'celery_taskqueue'}).nth(0).run(conn)['shards'][0]['primary_replica'] != servername:
+    print_msg("OK: %d failed tasks, not my problem" % length)
+    sys.exit(0)
+
+if length > 0:
+    print_msg("CRITICAL: %d unacknowledged failed tasks" % (length))
+    sys.exit(2)
+else:
+    print_msg("OK: No failed tasks")
+    sys.exit(0)

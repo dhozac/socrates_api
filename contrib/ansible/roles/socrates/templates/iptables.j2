@@ -1,0 +1,14 @@
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:rethinkdb - [0:0]
+-A INPUT -p tcp --dport 28015 -j rethinkdb
+-A INPUT -p tcp --dport 29015 -j rethinkdb
+-A INPUT -p tcp --dport 8080 -j rethinkdb
+-A rethinkdb -i lo -j ACCEPT
+{% for host in groups['sotservers'] %}
+-A rethinkdb -s {{ hostvars[host].ansible_default_ipv4.address }} -j ACCEPT
+{% endfor %}
+-A rethinkdb -j REJECT
+COMMIT

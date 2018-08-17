@@ -1,0 +1,53 @@
+---
+dependencies:
+- role: nginx
+  nginx_use_ssl_d: true
+- role: iocs-repo
+- role: nagios-checks
+  tags:
+  - monitoring
+  - socrates_monitoring
+  nagios_checks:
+  - name: check_rethinkdb
+    check_script: check_rethinkdb
+    description: RethinkDB
+    command: /usr/lib64/nagios/plugins/check_rethinkdb
+  - name: check_celery_socrates
+    description: Celery process
+    command: "/usr/lib64/nagios/plugins/check_procs -w 1:5 -c 1: -C celery"
+  - name: check_gunicorn_socrates
+    description: gunicorn health
+    command: /usr/lib64/nagios/plugins/check_http -H '{{ inventory_hostname }}' -p 8000 -w 0.5 -c 1 -u /health/
+  - name: check_nginx_socrates
+    description: nginx health
+    command: /usr/lib64/nagios/plugins/check_http -H '{{ inventory_hostname }}' -p 443 -S -w 0.5 -c 1 -u /health/
+  - name: check_celery_queue_socrates
+    description: Celery queue length
+    check_script: check_celery_queue
+    command: /usr/lib64/nagios/plugins/check_celery_queue -w 5 -c 10
+  - name: check_celery_failed_tasks
+    description: Celery un-acked failed tasks
+    check_script: check_celery_failed_tasks
+    command: /usr/lib64/nagios/plugins/check_celery_failed_tasks -u
+  - name: check_failed_installs
+    description: Servers failed installation
+    check_script: check_failed_installs
+    command: /usr/lib64/nagios/plugins/check_failed_installs
+    notes_url: "https://sot.fqdn.tld/asset/?state=ready&provisioning=true"
+  - name: check_missing_intake
+    description: Servers without intake
+    check_script: check_missing_intake
+    command: /usr/lib64/nagios/plugins/check_missing_intake
+    notes_url: "https://sot.fqdn.tld/asset/?state=new&asset_type=server"
+  - name: check_process_splunk
+    description: Splunk forwarder
+    command: "/usr/lib64/nagios/plugins/check_procs -w 1:5 -c 1: -C splunkd"
+  - name: check_failed_intake
+    description: Servers with failed intake
+    check_script: check_failed_intake
+    command: /usr/lib64/nagios/plugins/check_failed_intake
+  - name: check_oob
+    description: Out-of-band reachability
+    check_script: check_oob.py
+    template: daily-service
+    command: /usr/lib64/nagios/plugins/check_oob.py -r -w 60 -c 100

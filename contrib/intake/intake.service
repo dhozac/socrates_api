@@ -1,0 +1,12 @@
+[Unit]
+Description=Intake service
+After=network.target haproxy.service any-network.service
+
+[Service]
+Type=idle
+Restart=no
+ExecStart=/usr/sbin/intake
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

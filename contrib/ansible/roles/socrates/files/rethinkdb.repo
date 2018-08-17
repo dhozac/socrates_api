@@ -1,0 +1,5 @@
+[rethinkdb]
+name=RethinkDB for CentOS 7
+baseurl=https://reposerver-example-app1.fqdn.tld/path/to/rethinkdb/
+	https://reposerver-example-app2.fqdn.tld/path/to/rethinkdb/
+gpgcheck=0

@@ -1,0 +1,40 @@
+- name: Reload systemd
+  command: systemctl daemon-reload
+
+- name: Restart iptables
+  service: name=iptables state=restarted
+
+- name: Run tmpfiles
+  command: systemd-tmpfiles --create
+
+- name: Restart rethinkdb
+  service: name=rethinkdb@socrates state=restarted
+
+- name: Restart nginx
+  service: name=nginx state=restarted
+
+- name: Create tables and indices
+  command: env DJANGO_SETTINGS_MODULE=socrates.settings django-admin syncrethinkdb
+  run_once: true
+
+- name: Restart gunicorn
+  service: name=gunicorn state=restarted
+
+- name: Enable gunicorn
+  command: systemctl enable gunicorn.socket
+
+- name: Enable celery
+  command: systemctl enable celery.service
+
+- name: Restart celery
+  service: name=celery state=restarted
+
+- name: Restart celerybeat
+  service: name=celerybeat state=restarted
+  when: socrates_beat == "enable"
+
+- name: Enable websockify
+  command: systemctl enable websockify.service
+
+- name: Restart websockify
+  service: name=websockify state=restarted

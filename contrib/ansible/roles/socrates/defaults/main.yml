@@ -1,0 +1,9 @@
+---
+socrates_beat: disable
+socrates_git_host: git-example-app1.fqdn.tld
+socrates_git_port: 7999
+socrates_git_project: example
+socrates_git_repo: socrates
+socrates_playbooks_repo: playbooks
+socrates_contact_groups:
+- socrates.operators

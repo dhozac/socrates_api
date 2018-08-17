@@ -1,0 +1,12 @@
+[Unit]
+Description=Brings up a network interface
+Before=network.target
+
+[Service]
+Type=forking
+Restart=no
+TimeoutSec=1800
+ExecStart=/usr/sbin/any-network
+
+[Install]
+WantedBy=multi-user.target

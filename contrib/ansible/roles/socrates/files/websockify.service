@@ -1,0 +1,14 @@
+[Unit]
+Description=websockify daemon
+After=network.target
+
+[Service]
+User=celery
+Group=celery
+WorkingDirectory=/var/tmp
+ExecStart=/usr/bin/websockify --token-plugin=socrates_gui.websocket.SocratesTokenPlugin --auth-plugin=socrates_gui.websocket.SocratesAuthPlugin 8001
+ExecStop=/bin/kill -s TERM $MAINPID
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

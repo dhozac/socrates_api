@@ -1,0 +1,10 @@
+---
+- name: Install nginx configuration file
+  copy: src=nginx-socrates.conf dest=/etc/nginx/ssl.d/socrates.conf owner=root group=root mode=0644
+  notify:
+  - Restart nginx
+
+- name: Install http-to-https forwarding
+  copy: src=nginx-http-https.conf dest=/etc/nginx/default.d/http-https.conf owner=root group=root mode=0644
+  notify:
+  - Restart nginx

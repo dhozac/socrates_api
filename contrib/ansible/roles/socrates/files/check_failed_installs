@@ -1,0 +1,43 @@
+#!/usr/bin/python -tt
+
+import sys
+import optparse
+import datetime
+import socket
+import pytz
+import rethinkdb as r
+
+parser = optparse.OptionParser()
+parser.add_option("-w", "--warning", action="store", dest="warning", type="int", default=60)
+parser.add_option("-c", "--critical", action="store", dest="critical", type="int", default=90)
+options, args = parser.parse_args()
+
+conn = r.connect(host='127.0.0.1', db='socrates')
+
+warning = 0
+critical = 0
+failures = []
+now = datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
+for asset in r.table("assets").filter({'state': 'ready', 'provisioning': True}).run(conn):
+    if asset['last_updated'] + datetime.timedelta(minutes=options.critical) < now:
+        critical += 1
+        failures.append("%s was updated on %s" % (asset['service_tag'], asset['last_updated']))
+    elif asset['last_updated'] + datetime.timedelta(minutes=options.warning) < now:
+        warning += 1
+        failures.append("%s was updated on %s" % (asset['service_tag'], asset['last_updated']))
+
+servername = r.db('rethinkdb').table('server_status').filter({'network': {'hostname': socket.gethostname()}}).nth(0).run(conn)['name']
+my_problem = r.db('rethinkdb').table('table_config').filter({'db': 'socrates', 'name': 'assets'}).nth(0).run(conn)['shards'][0]['primary_replica'] == servername
+
+if my_problem and critical > 0:
+    ret = 2
+    label = "CRITICAL"
+elif my_problem and warning > 0:
+    ret = 1
+    label = "WARNING"
+else:
+    ret = 0
+    label = "OK"
+print("%s: %d warning, %d critical | warning=%d critical=%d" % (label, warning, critical, warning, critical))
+print("\n".join(failures))
+sys.exit(ret)
