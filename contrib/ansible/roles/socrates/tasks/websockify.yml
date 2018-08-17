@@ -1,0 +1,6 @@
+---
+- name: Create websockify service
+  copy: src=websockify.service dest=/etc/systemd/system/websockify.service owner=root group=root mode=0644
+  notify:
+  - Reload systemd
+  - Enable websockify

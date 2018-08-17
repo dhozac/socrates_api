@@ -1,0 +1,39 @@
+#!/usr/bin/python -tt
+
+import sys
+import rethinkdb as r
+import socket
+
+try:
+    conn = r.connect(host='localhost')
+    issues = r.db('rethinkdb').table('current_issues').run(conn)
+except:
+    print("CRITICAL: Unable to connect to RethinkDB")
+    sys.exit(1)
+
+state = 0
+servername = r.db('rethinkdb').table('server_status').filter({'network': {'hostname': socket.gethostname()}}).nth(0).run(conn)['name']
+for issue in issues:
+    if 'shards' in issue['info']:
+        missing_peers = map(lambda x: x['server'], filter(lambda x: x['state'] != "ready", issue['info']['shards'][0]['replicas']))
+        if issue['critical']:
+            state = max([2, state])
+            if issue['type'] == "table_availability" and not issue['info']['status']['ready_for_writes']:
+                print("CRITICAL: Lost too many peers (%s)" % (", ".join(missing_peers)))
+        else:
+            state = max([1, state])
+            if issue['type'] == "table_availability" and not issue['info']['status']['all_replicas_ready']:
+                print("WARNING: Lost peer (%s)" % (", ".join(missing_peers)))
+    else:
+        if 'servers' in issue['info'] and servername in issue['info']['servers']:
+            if issue['critical']:
+                state = max([2, state])
+                print("CRITICAL: %s" % issue['info']['message'])
+            else:
+                state = max([1, state])
+                print("WARNING: %s" % issue['info']['message'])
+
+if state == 0:
+    print("OK")
+
+sys.exit(state)

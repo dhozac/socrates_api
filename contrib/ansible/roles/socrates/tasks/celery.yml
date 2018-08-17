@@ -1,0 +1,26 @@
+---
+- name: Create celery user
+  user: name=celery shell=/bin/bash system=yes home=/etc/celery
+
+- name: Create celery configuration directory
+  file: state=directory dest=/etc/celery owner=root group=root mode=0755
+
+- name: Install celery configuration file
+  copy: src=celery.conf dest=/etc/celery/celery.conf owner=root group=root mode=0644
+  notify:
+  - Restart celery
+  - Restart celerybeat
+
+- name: Add celery service
+  copy: src=celery.service dest=/etc/systemd/system/celery.service owner=root group=root mode=0644
+  notify:
+  - Reload systemd
+  - Enable celery
+
+- name: Add celerybeat service
+  copy: src=celerybeat.service dest=/etc/systemd/system/celerybeat.service owner=root group=root mode=0644
+  notify:
+  - Reload systemd
+
+- name: Add celery tmpfiles.d
+  copy: src=celery.tmpfiles dest=/etc/tmpfiles.d/celery.conf owner=root group=root mode=0644

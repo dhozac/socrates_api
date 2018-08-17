@@ -1,0 +1,225 @@
+---
+- name: Install packages
+  yum: name={{ item }} state=installed
+  with_items:
+  - git
+  - rethinkdb
+  - python-pip
+  - ipmitool
+  - python-crypto
+  - python-paramiko
+  - iptables-services
+  - python-lxml
+  - tmpwatch
+  - dmidecode
+  - npm
+  - libvirt-python
+  - virt-install
+  - openldap-clients
+  - numpy
+  - awscli
+  - python-dns
+  - gcc
+  - openldap-devel
+  - python-devel
+
+- name: Install iptables configuration to protect RethinkDB
+  template: src=iptables.j2 dest=/etc/sysconfig/iptables owner=root group=root mode=0644
+  tags:
+  - socrates_iptables
+  notify:
+  - Restart iptables
+
+- name: Set vm.swappiness to decrease swapping
+  sysctl: name=vm.swappiness value=10
+
+- include: nginx.yml
+- include: rethinkdb.yml
+- include: gunicorn.yml
+- include: celery.yml
+- include: websockify.yml
+
+- name: Create temporary files
+  command: systemd-tmpfiles --create
+
+- name: Generate ssh key for root
+  command: creates=/root/.ssh/id_rsa ssh-keygen -f /root/.ssh/id_rsa -t rsa -b 2048 -N ""
+
+- name: Get root's public ssh key
+  command: cat /root/.ssh/id_rsa.pub
+  register: socrates_root_key
+  changed_when: false
+  check_mode: no
+
+- name: Get root's private ssh key
+  command: cat /root/.ssh/id_rsa
+  register: socrates_root_private_key
+  check_mode: no
+  changed_when: false
+
+- name: Create .ssh directories
+  file: state=directory name={{ item.directory }}/.ssh owner={{ item.owner }} group={{ item.owner }} mode=0700
+  with_items:
+  - directory: /etc/celery
+    owner: celery
+
+- name: Create .ssh/known_hosts
+  file: state=touch name={{ item.directory }}/.ssh/known_hosts owner={{ item.owner }} group={{ item.owner }} mode=0600
+  with_items:
+  - directory: /etc/celery
+    owner: celery
+
+- name: Copy root's ssh key to gunicorn and celery
+  copy: dest={{ item.directory }}/.ssh/id_rsa owner={{ item.owner }} group={{ item.owner }} mode=0600 content="{{ socrates_root_private_key.stdout }}"
+  with_items:
+  - directory: /etc/celery
+    owner: celery
+
+- name: Get stash's key
+  command: ssh-keyscan -p {{ socrates_git_port }} {{ socrates_git_host }}
+  register: socrates_stash_key
+  changed_when: false
+
+- name: Add stash's key to known_hosts
+  lineinfile: dest={{ item }}/.ssh/known_hosts line="{{ socrates_stash_key.stdout }}" create=yes
+  with_items:
+  - /root
+  - /etc/celery
+
+- name: Allow access to stash
+  connection: local
+  become: false
+  stash_access_key: server={{ socrates_git_host }} username={{ stash_username }} password={{ stash_password }} project={{ socrates_git_project }} repository={{ socrates_git_repo }} key="{{ socrates_root_key.stdout }}"
+
+- name: Allow access to playbooks
+  connection: local
+  become: false
+  stash_access_key: server={{ socrates_git_host }} username={{ stash_username }} password={{ stash_password }} project={{ socrates_git_project }} repository={{ socrates_playbooks_repo }} key="{{ socrates_root_key.stdout }}"
+
+- name: Allow access to servers
+  connection: local
+  become: false
+  ldap_user_key: username={{ socrates_username }} password={{ socrates_password }} key="{{ socrates_root_key.stdout }}"
+
+- name: Use root for celery
+  copy: dest=/etc/celery/.ssh/config owner=celery group=celery mode=0600 content="User root\n"
+
+- name: Download playbooks
+  git: dest=/opt/socrates/playbooks repo="ssh://{{ socrates_git_host }}:{{ socrates_git_port }}/{{ socrates_git_project }}/{{ socrates_playbooks_repo }}.git" force=yes version=master recursive=yes
+  tags:
+  - socrates_playbooks
+
+- name: Setup git
+  copy: dest=/etc/gitconfig owner=root group=root mode=0644 content="[user]\n\tname = Socrates\n"
+
+- name: Create ansible directory
+  file: state=directory dest=/etc/ansible owner=root group=root mode=0755
+
+- name: Create ansible configuration file
+  copy: src=ansible.cfg dest=/etc/ansible/ansible.cfg owner=root group=root mode=0644
+
+- name: Ensure permissions on celery ansible temporary path is correct
+  file: state=directory dest=/tmp/celery-ansible owner=celery group=celery mode=0755
+
+- name: Create directory ansible requires
+  file: dest=/etc/celery/.ansible state=directory owner=celery group=celery mode=0700
+
+- name: Download Socrates
+  git: dest=/usr/src/socrates repo="ssh://{{ socrates_git_host }}:{{ socrates_git_port }}/{{ socrates_git_project }}/{{ socrates_git_repo }}.git" force=yes version=master
+  register: socrates_downloaded
+  notify:
+  - Create tables and indices
+  - Restart gunicorn
+  - Restart celery
+  - Restart celerybeat
+  - Restart websockify
+
+- name: Install Socrates dependencies
+  pip:
+    name: "{{ item.name }}"
+    version: "{{ item.version|default(omit) }}"
+    state: present
+  with_items:
+  - name: pyvmomi
+    version: 6.0.0.2016.6
+  - name: ansible
+    version: 2.4.0.0
+  - name: bigsuds
+    version: 1.0.4
+  - name: f5-sdk
+    version: 3.0.1
+  when: socrates_downloaded.changed
+
+- name: Install Socrates dependencies
+  pip: state=latest editable=false name="{{ item }}"
+  with_items:
+  - https://reposerver-example-app1.fqdn.tld/path/to/rethinkdb/
+  notify:
+  - Restart gunicorn
+  - Restart celery
+  - Restart celerybeat
+  - Restart websockify
+
+- name: Install Socrates dependencies
+  pip: requirements=/usr/src/socrates/requirements.txt state=present
+  when: socrates_downloaded.changed
+
+- name: Get socrates_gui path
+  command: python -c 'import socrates_gui, os; print(os.path.dirname(socrates_gui.__file__))'
+  register: socrates_gui_path
+  changed_when: false
+
+- name: Install npm dependencies
+  command: chdir={{ socrates_gui_path.stdout }} npm install
+  when: socrates_downloaded.changed
+
+- name: Install Socrates
+  command: chdir=/usr/src/socrates ./setup.py install
+  when: socrates_downloaded.changed
+
+- name: Get Socrates path
+  command: python -c 'import socrates, os; print(os.path.dirname(socrates.__file__))'
+  register: socrates_path
+  changed_when: false
+
+- name: Install Socrates configuration
+  template: src=local_settings.py.j2 dest={{ socrates_path.stdout }}/local_settings.py owner=root group=root mode=0644
+  notify:
+  - Restart gunicorn
+  - Restart celery
+
+- name: Create javascript destination directory
+  file: state=directory dest=/opt/socrates/static/js owner=root group=root mode=0755
+
+- name: Create node_modules symlink
+  file: state=link src={{ socrates_gui_path.stdout }}/node_modules dest=/opt/socrates/static/js/node_modules
+
+- name: Collect static files
+  shell: chdir={{ socrates_gui_path.stdout }} env PATH=$PATH:{{ socrates_gui_path.stdout }}/node_modules/.bin NODE_PATH={{ socrates_gui_path.stdout }}/node_modules DJANGO_SETTINGS_MODULE=socrates.settings django-admin collectstatic --noinput
+  when: socrates_downloaded.changed
+
+- name: Create backup destination
+  file: state=directory dest=/srv/rethinkexports owner=root group=root mode=0700
+
+- name: Install backup script
+  template: src=rethinkdb-backup dest=/usr/local/sbin/rethinkdb-backup owner=root group=root mode=0755
+
+- name: Install backup cron job
+  cron: name=rethink-backup job="/usr/local/sbin/rethinkdb-backup" cron_file=rethink-backup minute=9 hour=*/3 day=* month=* weekday=* user=root
+
+- name: Start services
+  service: name={{ item }} state=started enabled=yes
+  with_items:
+  - iptables
+  - rethinkdb@socrates
+  - gunicorn
+  - celery
+  - websockify
+
+- name: Start celerybeat on designated host
+  service: name=celerybeat state=started enabled=yes
+  when: socrates_beat == "enable"
+
+- name: Stop celerybeat on non-designated hosts
+  service: name=celerybeat state=stopped enabled=no
+  when: socrates_beat != "enable"

@@ -1,0 +1,33 @@
+#!/usr/bin/python -tt
+
+import sys
+import optparse
+import rethinkdb as r
+import socket
+
+parser = optparse.OptionParser()
+parser.add_option("-w", "--warning", dest="warning", type="int", default=5)
+parser.add_option("-c", "--critical", dest="critical", type="int", default=10)
+
+options, args = parser.parse_args()
+
+conn = r.connect(host='127.0.0.1', db='socrates')
+length = r.table('celery_taskqueue').filter(lambda obj: obj['claimed_by'].count() == 0).count().run(conn)
+
+def print_msg(msg):
+    print("%s | queue=%d;%d;%d;;" % (msg, length, options.warning, options.critical))
+
+servername = r.db('rethinkdb').table('server_status').filter({'network': {'hostname': socket.gethostname()}}).nth(0).run(conn)['name']
+if r.db('rethinkdb').table('table_config').filter({'db': 'socrates', 'name': 'celery_taskqueue'}).nth(0).run(conn)['shards'][0]['primary_replica'] != servername:
+    print_msg("OK: Celery queue %d, not my problem" % length)
+    sys.exit(0)
+
+if length > options.critical:
+    print_msg("CRITICAL: Celery queue %d > %d" % (length, options.critical))
+    sys.exit(2)
+elif length > options.warning:
+    print_msg("WARNING: Celery queue %d > %d" % (length, options.warning))
+    sys.exit(1)
+else:
+    print_msg("OK: Celery queue %d" % length)
+    sys.exit(0)

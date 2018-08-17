@@ -1,0 +1,33 @@
+#!/usr/bin/python -tt
+
+import sys
+import optparse
+import socket
+import rethinkdb as r
+
+parser = optparse.OptionParser()
+parser.add_option("-c", "--critical", action="store", dest="critical", type="int", default=90)
+options, args = parser.parse_args()
+
+conn = r.connect(host='127.0.0.1', db='socrates')
+
+failures = []
+for asset in r.table("assets_raw").filter(lambda asset:
+        asset.keys().map(lambda key:
+            ((asset[key].type_of() == "OBJECT") & (asset[key].has_fields('failed') & asset[key]['failed']))
+        ).contains(True)).pluck("service_tag").run(conn):
+    failures.append(asset['service_tag'])
+
+servername = r.db('rethinkdb').table('server_status').filter({'network': {'hostname': socket.gethostname()}}).nth(0).run(conn)['name']
+my_problem = r.db('rethinkdb').table('table_config').filter({'db': 'socrates', 'name': 'assets'}).nth(0).run(conn)['shards'][0]['primary_replica'] == servername
+
+critical = len(failures)
+if my_problem and critical > 0:
+    ret = 2
+    label = "CRITICAL"
+else:
+    ret = 0
+    label = "OK"
+print("%s: %d critical | critical=%d" % (label, critical, critical))
+print("\n".join(failures))
+sys.exit(ret)

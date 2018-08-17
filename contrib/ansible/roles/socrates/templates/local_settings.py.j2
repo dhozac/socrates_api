@@ -1,0 +1,140 @@
+from __future__ import absolute_import
+
+import os
+os.environ['REQUESTS_CA_BUNDLE'] = '/etc/pki/tls/certs/ca-bundle.crt'
+
+# LDAP settings
+from django_auth_ldap.config import LDAPSearch, GroupOfUniqueNamesType
+import ldap
+AUTH_LDAP_SERVER_URI = "ldap://ldap-example-uri.fqdn.tld"
+AUTH_LDAP_START_TLS = True
+AUTH_LDAP_USER_SEARCH = LDAPSearch("ou=People,dc=fqdn,dc=tld",
+    ldap.SCOPE_SUBTREE, "(&(uid=%(user)s)(exampleEnabledUser=TRUE))")
+AUTH_LDAP_GROUP_SEARCH = LDAPSearch("ou=Groups,dc=fqdn,dc=tld",
+    ldap.SCOPE_SUBTREE, "(objectClass=exampleGroup)"
+)
+AUTH_LDAP_GROUP_TYPE = GroupOfUniqueNamesType(name_attr="cn")
+AUTH_LDAP_MIRROR_GROUPS = True
+AUTH_LDAP_USER_ATTR_MAP = {
+    "first_name": "givenName",
+    "last_name": "sn",
+    "email": "mail"
+}
+AUTH_LDAP_USER_FLAGS_BY_GROUP = {
+    "is_superuser": "cn=socrates.operators,ou=Groups,dc=fqdn,dc=tld",
+    "is_staff": "cn=example.socrates.staff,ou=Groups,dc=fqdn,dc=tld",
+    "is_global_readonly": "cn=example.socrates.readonly,ou=Groups,dc=fqdn,dc=tld",
+    # Access to consoles
+    # note, superuser group has implicit access
+    "is_console_user": "cn=example.console.users,ou=Groups,dc=fqdn,dc=tld",
+}
+AUTH_LDAP_ALWAYS_UPDATE_USER = True
+AUTH_LDAP_FIND_GROUP_PERMS = True
+AUTH_LDAP_CACHE_GROUPS = False
+AUTH_LDAP_GROUP_CACHE_TIMEOUT = 3600
+AUTH_LDAP_BIND_AS_AUTHENTICATING_USER = True
+
+AUTHENTICATION_BACKENDS = (
+    'django_auth_ldap.backend.LDAPBackend',
+    'django.contrib.auth.backends.ModelBackend',
+)
+
+ANSIBLE_PLAYBOOK_DIR = '/opt/socrates/playbooks/'
+
+# DNS provisioning settings
+SOCRATES_IPAM = 'socrates_api.ipam.BonkIPAM'
+BONK_URL = 'https://{{ inventory_hostname }}/bonk'
+BONK_AUTH = ('{{ socrates_username }}', '{{ socrates_password }}')
+BONK_TRIGGER_REBUILD = {
+    'type': 'subprocess',
+    'command': ['sudo', '-u', 'iscbrf', '/usr/local/sbin/provision'],
+}
+BONK_SOCRATES_AUTH = ('{{ socrates_username }}', '{{ socrates_password }}')
+
+# Mail settings
+SOCRATES_MAIL_FROM = 'socrates@sot.fqdn.tld'
+SOCRATES_MAIL_DOMAIN = 'fqdn.tld'
+
+# Monitoring settings
+MONITOR_API_HEADERS = {'Content-Type': 'application/json'}
+MONITOR_API_URL = 'https://example-monitoring-uri.fqdn.tld'
+MONITOR_DOWNTIME_DEFAULT_DURATION = 86400
+MONITOR_SCHEDULE_DOWNTIME_ENDPOINT = '/api/command/SCHEDULE_AND_PROPAGATE_HOST_DOWNTIME'
+
+SOCRATES_HOSTNAME_PATTERN = r'^([a-z0-9-]+-[a-z0-9]+\.fqdn\.tld|[a-z0-9-]+\.example\.tld)$'
+SOCRATES_ALIAS_PATTERN = r'^[a-z0-9-]+\.fqdn\.tld$'
+
+SOCRATES_OOB_DOMAIN = 'oobdomain.fqdn.tld'
+
+WARRANTY_REPORT_EXPIRATION_WARNING = 60
+WARRANTY_REPORT_MAX_AGE = 7
+WARRANTY_REPORT_RECIPIENTS = ["socrates.operators@fqdn.tld"]
+
+import celery.schedules
+CELERY_BEAT_SCHEDULE = {
+    'send-expiring-warranty-report': {
+        'task': 'socrates_api.tasks.send_expiring_warranty_report',
+        'schedule': celery.schedules.crontab(day_of_month='15', hour='3', minute='42'),
+        'args': (WARRANTY_REPORT_RECIPIENTS, WARRANTY_REPORT_EXPIRATION_WARNING )
+    },
+    'send-eol-report': {
+        'task': 'socrates_api.tasks.send_eol_report',
+        'schedule': celery.schedules.crontab(day_of_month='15', hour='3', minute='42'),
+        'args': (WARRANTY_REPORT_RECIPIENTS, WARRANTY_REPORT_MAX_AGE, WARRANTY_REPORT_EXPIRATION_WARNING )
+    },
+    'send-no-warranty-report': {
+        'task': 'socrates_api.tasks.send_no_warranty_report',
+        'schedule': celery.schedules.crontab(day_of_month='15', hour='3', minute='42'),
+        'args': (WARRANTY_REPORT_RECIPIENTS, )
+    },
+    'batch-update-warranties-from-vendors': {
+        'task': 'socrates_api.tasks.batch_update_warranties_from_vendors',
+        'schedule': celery.schedules.crontab(day_of_month='15', hour='2', minute='42')
+    },
+    'retry-invalid-warranties-from-vendors': {
+        'task': 'socrates_api.tasks.retry_invalid_warranties_from_vendors',
+        'schedule': celery.schedules.crontab(day_of_month='*/10', hour='1', minute='42')
+    },
+    'collect-all-vms': {
+        'task': 'socrates_api.tasks.collect_all_vms',
+        'schedule': celery.schedules.crontab(hour='7', minute='42')
+    },
+    'collect-networks': {
+        'task': 'socrates_api.tasks.collect_networks',
+        'schedule': celery.schedules.crontab(hour='7', minute='12')
+    },
+    'cleanup-taskqueue': {
+        'task': 'socrates_api.tasks.cleanup_taskqueue',
+        'schedule': celery.schedules.crontab(hour='2', minute='2')
+    },
+}
+
+SOCRATES_VMWARE_USERNAME = "{{ socrates_vmware_username }}"
+SOCRATES_VMWARE_PASSWORD = "{{ socrates_vmware_password }}"
+SOCRATES_OP5_USERNAME = "{{ socrates_username }}"
+SOCRATES_OP5_PASSWORD = "{{ socrates_password }}"
+SOCRATES_OVIRT_USERNAME = "{{ socrates_username }}@LDAP"
+SOCRATES_OVIRT_PASSWORD = "{{ socrates_password }}"
+SOCRATES_OVIRT_INSECURE = True
+SOCRATES_IOS_USERNAME = "{{ socrates_ios_username }}"
+SOCRATES_IOS_PASSWORD = "{{ socrates_ios_password }}"
+DELL_API_KEY = "{{ socrates_dell_api_key }}"
+DELL_API_URL = "{{ socrates_dell_api_url }}"
+DELL_API_BATCHSIZE = {{ socrates_dell_api_batch_size }}
+ANSIBLE_EXTRA_VARS = {
+    'op5_username': SOCRATES_OP5_USERNAME,
+    'op5_password': SOCRATES_OP5_PASSWORD,
+    'ssh_authorized_keys': ["# This file left blank"],
+    'ios_username': SOCRATES_IOS_USERNAME,
+    'ios_password': SOCRATES_IOS_PASSWORD,
+}
+DEBUG = False
+ALLOWED_HOSTS = [
+    '{{ inventory_hostname_short }}',
+    '{{ inventory_hostname_short }}.fqdn.tld',
+    'sot',
+    'sot.fqdn.tld'
+]
+STATIC_ROOT = '/opt/socrates/static'
+SECRET_KEY = '{{ socrates_secret_key }}'
+SOCRATES_NODE_HMAC_KEY = '{{ socrates_hmac_key }}'

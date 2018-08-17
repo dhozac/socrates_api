@@ -1,0 +1,45 @@
+#!/usr/bin/python -tt
+
+import ldap
+
+def main():
+    module = AnsibleModule(
+        argument_spec = dict(
+            state = dict(type='str', default='present', choices=['present', 'absent']),
+            server = dict(type='str', required=False, default="ldap://ldap-example-app1.fqdn.tld"),
+            tls = dict(type='bool', required=False, default=True),
+            base_dn = dict(type='str', required=False, default='dc=fqdn,dc=tld'),
+            username = dict(type='str', required=True),
+            password = dict(type='str', required=True, no_log=True),
+            key = dict(type='str', required=True),
+        ),
+        supports_check_mode = True
+    )
+
+    l = ldap.initialize(module.params['server'])
+    if module.params['tls']:
+        l.start_tls_s()
+    user = l.search_s(module.params['base_dn'], ldap.SCOPE_SUBTREE, "(uid=%s)" % module.params['username'])
+    if len(user) == 0:
+        module.fail_json(msg="Username %s not found by uid in %s" % (module.params['username'], module.params['base_dn']))
+    dn, user = user[0]
+    l.bind_s(dn, module.params['password'])
+
+    changed = False
+    if module.params['state'] == "present":
+        if 'userSSHPublicKey' not in user or module.params['key'] not in user['userSSHPublicKey']:
+            changed = True
+            if not module.check_mode:
+                l.modify_s(dn, [(ldap.MOD_ADD, 'userSSHPublicKey', module.params['key'])])
+    elif module.params['state'] == "absent":
+        if 'userSSHPublicKey' in user and module.params['key'] in user['userSSHPublicKey']:
+            changed = True
+            if not module.check_mode:
+                l.modify_s(dn, [(ldap.MOD_DELETE, 'userSSHPublicKey', module.params['key'])])
+
+    l.unbind_s()
+    module.exit_json(changed=changed)
+
+# import module snippets
+from ansible.module_utils.basic import *
+main()

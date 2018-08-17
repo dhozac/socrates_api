@@ -1,0 +1,26 @@
+---
+- name: Create gunicorn user
+  user: name=gunicorn shell=/sbin/nologin system=yes home=/etc/gunicorn
+
+- name: Create gunicorn configuration directory
+  file: state=directory dest=/etc/gunicorn owner=root group=root mode=0755
+
+- name: Install gunicorn configuration file
+  copy: src=gunicorn.conf.py dest=/etc/gunicorn/socrates.conf.py owner=root group=root mode=0644
+  notify:
+  - Restart gunicorn
+
+- name: Create gunicorn log directory
+  file: state=directory dest=/var/log/gunicorn owner=gunicorn group=gunicorn mode=0700
+
+- name: Add gunicorn service
+  copy: src={{ item }} dest=/etc/systemd/system/{{ item }} owner=root group=root mode=0644
+  with_items:
+  - gunicorn.service
+  - gunicorn.socket
+  notify:
+  - Reload systemd
+  - Enable gunicorn
+
+- name: Add gunicorn tmpfiles.d
+  copy: src=gunicorn.tmpfiles dest=/etc/tmpfiles.d/gunicorn.conf owner=root group=root mode=0644

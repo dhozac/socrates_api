@@ -1,0 +1,36 @@
+#!/usr/bin/python -tt
+
+import sys
+import optparse
+import datetime
+import socket
+import pytz
+import rethinkdb as r
+
+parser = optparse.OptionParser()
+parser.add_option("-c", "--critical", action="store", dest="critical", type="int", default=90)
+options, args = parser.parse_args()
+
+conn = r.connect(host='127.0.0.1', db='socrates')
+
+now = datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
+failures = []
+for asset in r.table("assets").filter({'state': 'new', 'asset_type': 'server'}).run(conn):
+    if 'oob' not in asset or 'username' not in asset['oob']:
+        if asset['last_updated'] + datetime.timedelta(minutes=options.critical) < now:
+            failures.append(asset['service_tag'])
+
+servername = r.db('rethinkdb').table('server_status').filter({'network': {'hostname': socket.gethostname()}}).nth(0).run(conn)['name']
+if r.db('rethinkdb').table('table_config').filter({'db': 'socrates', 'name': 'assets'}).nth(0).run(conn)['shards'][0]['primary_replica'] != servername:
+    print("OK: %d servers have not run intake, not my problem | servers=%d" % (len(failures), len(failures)))
+    sys.exit(0)
+
+if len(failures) > 0:
+    ret = 2
+    label = "CRITICAL"
+else:
+    ret = 0
+    label = "OK"
+print("%s: %d servers have not run intake | servers=%d" % (label, len(failures), len(failures)))
+print("\n".join(failures))
+sys.exit(ret)

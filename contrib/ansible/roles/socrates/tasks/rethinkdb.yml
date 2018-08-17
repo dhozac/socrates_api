@@ -1,0 +1,23 @@
+---
+- name: Install RethinkDB instance configuration
+  template: src=rethinkdb-instance.conf.j2 dest=/etc/rethinkdb/instances.d/socrates.conf owner=root group=root mode=0644
+  notify:
+  - Restart rethinkdb
+
+- name: Install RethinkDB systemd service
+  copy: src=rethinkdb@.service dest=/etc/systemd/system/rethinkdb@.service owner=root group=root mode=0644
+  notify:
+  - Restart rethinkdb
+
+- name: Install RethinkDB tmpfiles
+  copy: src=rethinkdb.tmpfiles dest=/etc/tmpfiles.d/rethinkdb.conf owner=root group=root mode=0644
+  notify:
+  - Run tmpfiles
+
+- name: Create RethinkDB database directory
+  file: state=directory dest=/var/lib/rethinkdb/socrates owner=rethinkdb group=rethinkdb mode=0750
+
+- name: Initialize RethinkDB
+  command: creates=/var/lib/rethinkdb/socrates/data rethinkdb create -d /var/lib/rethinkdb/socrates/data
+  become: yes
+  become_user: rethinkdb
