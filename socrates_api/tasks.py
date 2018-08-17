@@ -1887,8 +1887,6 @@ def collect_switch_networks(asset):
         friends = [nic['remote']['domain'] for nic in asset.get('nics', []) if 'remote' in nic]
         related_switches = sibling_domains + friends
         firewalls = AssetSerializer.filter(lambda firewall:
-            (firewall['asset_type'] == 'network') &
-            (firewall['asset_subtype'] == 'firewall') &
             firewall.has_fields('network') &
             firewall['network'].has_fields('device') &
             (firewall['nics'].map(lambda nic: nic['remote']['domain']).
@@ -2604,11 +2602,7 @@ def add_network(asset, network):
             return add_network_ovirt(asset, network)
         elif asset['asset_subtype'] == 'libvirt':
             return add_network_libvirt(asset, network)
-    elif asset['asset_type'] == 'network' and asset['asset_subtype'] == 'firewall' and 'url' in asset:
-        url = urlparse.urlparse(asset['url'])
-        if url.scheme == 'ansible':
-            return add_network_ansible(asset, network, url)
-    elif asset['asset_type'] == 'network' and asset['asset_subtype'] == 'switch' and 'url' in asset:
+    elif 'url' in asset:
         url = urlparse.urlparse(asset['url'])
         if url.scheme == 'ansible':
             return add_network_ansible(asset, network, url)
@@ -2622,11 +2616,7 @@ def remove_network(asset, network):
             return remove_network_ovirt(asset, network)
         elif asset['asset_subtype'] == 'libvirt':
             return remove_network_libvirt(asset, network)
-    elif asset['asset_type'] == 'network' and asset['asset_subtype'] == 'firewall' and 'url' in asset:
-        url = urlparse.urlparse(asset['url'])
-        if url.scheme == 'ansible':
-            return remove_network_ansible(asset, network, url)
-    elif asset['asset_type'] == 'network' and asset['asset_subtype'] == 'switch' and 'url' in asset:
+    elif 'url' in asset:
         url = urlparse.urlparse(asset['url'])
         if url.scheme == 'ansible':
             return remove_network_ansible(asset, network, url)
