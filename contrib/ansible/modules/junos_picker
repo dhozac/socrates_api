@@ -1,0 +1,75 @@
+#!/usr/bin/python -tt
+
+import sys
+import re
+import jnpr.junos
+import jnpr.junos.op.vlan
+
+vlan_name_re = re.compile(r'[^A-Za-z0-9-_]')
+
+def main():
+    module = AnsibleModule(
+        argument_spec = dict(
+            user = dict(type='str', required=True),
+            host = dict(type='str', required=True),
+            port = dict(type='int', required=False, default=22),
+            network = dict(type='dict', required=True),
+            vlan_min = dict(type='int', required=False, default=2),
+            vlan_max = dict(type='int', required=False, default=4095),
+            strategy = dict(type='str', required=False, default='last', choices=['first', 'last']),
+        ),
+        supports_check_mode = True
+    )
+
+    kwargs = {
+        'user': module.params['user'],
+        'host': module.params['host'],
+        'port': module.params['port'],
+    }
+    try:
+        device = jnpr.junos.Device(**kwargs)
+        device.open(gather_facts=True)
+    except:
+        module.fail_json(msg="Failed to connect: %s" % sys.exc_info()[1])
+
+    try:
+        # This is a very slow command
+        device.timeout = 120
+        vlans = jnpr.junos.op.vlan.VlanTable(device)
+        vlans.get()
+    except:
+        module.fail_json(msg="Failed to list VLANs: %s" % sys.exc_info()[1])
+    finally:
+        device.close()
+
+    name = vlan_name_re.sub("", module.params['network']['ipam']['name'])
+    vlan_ids = set()
+    vlan_id = None
+    changed = False
+    for vlan in vlans:
+        vlan_ids.add(int(vlan.tag))
+        if vlan.name == name:
+            vlan_id = int(vlan.tag)
+
+    if vlan_id is None:
+        changed = True
+        elsewhere_ids = set(map(lambda x: x['vlan_id'], module.params['network']['domains'].values())) - set([0])
+        if len(elsewhere_ids) == 1:
+            elsewhere_id = elsewhere_ids.pop()
+            if (elsewhere_id not in vlan_ids and
+                    elsewhere_id > module.params['vlan_min'] and
+                    elsewhere_id < module.params['vlan_max']
+                ):
+                vlan_id = elsewhere_id
+        if vlan_id is None:
+            if module.params['strategy'] == 'first':
+                vlan_id = sorted(set(range(module.params['vlan_min'], module.params['vlan_max'])) - vlan_ids)[0]
+            elif module.params['strategy'] == 'last':
+                vlan_id = max(vlan_ids) + 1
+
+    module.exit_json(msg="VLAN id picked", changed=changed, name=name, vlan_id=vlan_id)
+
+# import module snippets
+from ansible.module_utils.basic import *
+if __name__ == "__main__":
+    main()

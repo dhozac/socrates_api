@@ -1,0 +1,77 @@
+#!/usr/bin/python -tt
+
+import Forti
+import struct
+import socket
+
+def main():
+    module = AnsibleModule(
+        argument_spec = dict(
+            url = dict(type='str', required=True),
+            username = dict(type='str', required=True),
+            password = dict(type='str', required=True, no_log=True),
+            device = dict(type='str', required=True),
+            adom = dict(type='str', required=True),
+            output = dict(type='str', required=False),
+        ),
+        supports_check_mode = True
+    )
+
+    networks = []
+
+    mgr = Forti.FortiMgr(module.params['url'])
+    mgr.login(module.params['username'], module.params['password'])
+
+    interfaces = mgr.get_interfaces(module.params['adom'], module.params['device'],
+        fields=["name", "vdom", "vlanid", "ip", "type", "dhcp-relay-service", "dhcp-relay-ip"],
+        filter=[["status", "==", 1], "&&", ["ip", "!=", ["0.0.0.0", "0.0.0.0"]]]
+    )['result'][0]['data']
+
+    zones = {}
+    for zone in mgr.get_zones(module.params['adom'])['result'][0]['data']:
+        if 'dynamic_mapping' not in zone or not zone['dynamic_mapping']:
+            continue
+        for mapping in zone['dynamic_mapping']:
+            if '_scope' not in mapping:
+                continue
+            if mapping['_scope'][0]['name'] != module.params['device']:
+                continue
+            if mapping['_scope'][0]['vdom'] not in zones:
+                zones[mapping['_scope'][0]['vdom']] = {}
+            for ifname in mapping['local-intf'] if isinstance(mapping['local-intf'], list) else [mapping['local-intf']]:
+                zones[mapping['_scope'][0]['vdom']][ifname] = zone['name']
+
+    for interface in interfaces:
+        if 'vlanid' not in interface or interface['vlanid'] == 0 or interface['ip'][0] == "0.0.0.0":
+            continue
+        netmask = struct.unpack(">I", socket.inet_aton(interface['ip'][1]))[0]
+        cidr = bin(netmask)[2:].find("0")
+        network = socket.inet_ntoa(struct.pack(">I", struct.unpack(">I", socket.inet_aton(interface['ip'][0]))[0] & netmask))
+        key = "%s/%d" % (network, cidr)
+        networks.append({
+            'vrf': 0,
+            'network': network,
+            'length': cidr,
+            'domains': {
+                module.params['device']: {
+                    'vlan_id': interface['vlanid'],
+                    'name': interface['name'],
+                    'data': {
+                        'zone': zones.get(interface['vdom'], {}).get(interface['name'], None),
+                        'vdom': interface['vdom'],
+                    }
+                }
+            },
+        })
+
+    if module.params['output']:
+        o = open(module.params['output'], "w")
+        json.dump(networks, o)
+        o.close()
+
+    module.exit_json(msg="Networks gathered", changed=True, networks=networks)
+
+# import module snippets
+from ansible.module_utils.basic import *
+if __name__ == "__main__":
+    main()
