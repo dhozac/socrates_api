@@ -1,0 +1,51 @@
+#!/usr/bin/python -tt
+
+import sys
+import json
+import jnpr.junos
+import jnpr.junos.op.vlan
+
+def main():
+    module = AnsibleModule(
+        argument_spec = dict(
+            user = dict(type='str', required=True),
+            host = dict(type='str', required=True),
+            port = dict(type='int', required=False, default=22),
+            output = dict(type='str', required=False),
+        ),
+        supports_check_mode = True
+    )
+
+    kwargs = {
+        'user': module.params['user'],
+        'host': module.params['host'],
+        'port': module.params['port'],
+    }
+    try:
+        device = jnpr.junos.Device(**kwargs)
+        device.open(gather_facts=True)
+    except:
+        module.fail_json(msg="Failed to connect: %s" % sys.exc_info()[1])
+
+    try:
+        # This is a very slow command
+        device.timeout = 120
+        vlans = jnpr.junos.op.vlan.VlanTable(device)
+        vlans.get()
+    except:
+        module.fail_json(msg="Failed to list VLANs: %s" % sys.exc_info()[1])
+    finally:
+        device.close()
+
+    vlans = [{'vlan_id': int(vlan.tag), 'name': vlan.name} for vlan in vlans]
+    if module.params['output']:
+        o = open(module.params['output'], "w")
+        json.dump(vlans, o)
+        o.close()
+
+    module.exit_json(msg="VLANs gathered", changed=True, vlans=vlans)
+
+# import module snippets
+from ansible.module_utils.basic import *
+if __name__ == "__main__":
+    main()

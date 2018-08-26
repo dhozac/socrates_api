@@ -1,0 +1,68 @@
+#!/usr/bin/python -tt
+
+import sys
+import os
+
+def main():
+    module = AnsibleModule(
+        argument_spec = dict(
+            asset = dict(type='dict', required=True),
+            switch_asset = dict(type='dict', required=True),
+            additional_vlans = dict(type='list', required=False, default=[]),
+        ),
+        supports_check_mode = True
+    )
+
+    asset = module.params['asset']
+
+    asset_nic_ports_raw = {}
+    remote_domain = module.params['switch_asset']['switch']['domain']
+    for nic in asset['nics']:
+        if 'remote' not in nic or 'port' not in nic['remote'] or nic['remote']['domain'] != remote_domain:
+            continue
+        asset_nic_ports_raw[nic['name']] = nic['remote']['port']
+    nics = {}
+    additional_vlans = asset.get('provision', {}).get('additional_vlans', [port for port in asset_nic_ports_raw.keys() if port not in asset.get('provision', {}).get('vlan', {}).get('ports', [])])
+
+    for interface, port in asset_nic_ports_raw.iteritems():
+        real_port = port
+        if port.endswith('.0'):
+            real_port = port[:-2]
+        nics[real_port] = {
+            'members': [],
+        }
+        seen_vlans = set()
+        vlans = []
+        if 'provision' in asset and 'vlan' in asset['provision'] and interface in asset['provision']['vlan'].get('ports', asset_nic_ports_raw.keys()):
+            if 'native' not in asset['provision']['vlan']:
+                asset['provision']['vlan']['native'] = True
+            vlans.append(asset['provision']['vlan'])
+        vlans.extend(asset.get('provision', {}).get('vlans', []))
+        for member in vlans:
+            seen_vlans.add(member['network']['domains'][remote_domain]['vlan_id'])
+            if interface in member.get('ports', asset_nic_ports_raw.keys()):
+                if member.get('native', False):
+                    nics[real_port]['name'] = member['network']['asset_domain']['name']
+                    nics[real_port]['id'] = member['network']['domains'][remote_domain]['vlan_id']
+                else:
+                    nics[real_port]['members'].append({
+                        'name': member['network']['asset_domain']['name'],
+                        'id': member['network']['domains'][remote_domain]['vlan_id'],
+                    })
+        if interface in additional_vlans:
+            for hv_vlan in module.params['additional_vlans']:
+                if hv_vlan['domains'][remote_domain]['vlan_id'] in seen_vlans:
+                    continue
+                nics[real_port]['members'].append({
+                    'name': hv_vlan['asset_domain']['name'],
+                    'id': hv_vlan['domains'][remote_domain]['vlan_id'],
+                })
+
+    latest_junos = 'els=1' in module.params['switch_asset']['url']
+
+    module.exit_json(changed=False, ansible_facts={'latest_junos': latest_junos, 'nics': nics})
+
+# import module snippets
+from ansible.module_utils.basic import *
+if __name__ == "__main__":
+    main()
