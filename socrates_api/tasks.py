@@ -444,9 +444,10 @@ def _extract_dell_warranty_from_raw(service_tag):
                             entitlements[stype] = {'description': e['ServiceLevelDescription'], 'end_date': current_end_date}
                             if not next_end_date or current_end_date < next_end_date:
                                 next_end_date = current_end_date
+        if warranty['AssetHeaderData']['OrderNumber']:
+            data['order_number'] = warranty['AssetHeaderData']['OrderNumber']
         data['entitlements'] = entitlements
         data['shipping_date'] = pytz.utc.localize(datetime.datetime.strptime(warranty['AssetHeaderData']['ShipDate'], "%Y-%m-%dT%H:%M:%S"))
-        data['order_number'] = warranty['AssetHeaderData']['OrderNumber']
         data['next_end_date'] = next_end_date
         data['valid'] = True
     else:
@@ -1035,7 +1036,7 @@ def add_to_dns(asset, old_asset=None):
             changed = True
             old_network = NetworkSerializer.get_by_asset_vlan(old_asset, old_asset['provision']['vlan'])
             if 'ip' in old_asset['provision']['vlan']:
-                ipam.ip_address_remove(old_network, asset, old_asset['provision']['hostname'], old_asset['provision']['vlan']['ip']) 
+                ipam.ip_address_remove(old_network, asset, old_asset['provision']['hostname'], old_asset['provision']['vlan']['ip'])
             new_network = NetworkSerializer.get_by_asset_vlan(asset, asset['provision']['vlan'])
             kwargs = {}
             if 'ip' in asset['provision']['vlan'] and ipv4_network_contains(asset['provision']['vlan']['cidr'], asset['provision']['vlan']['ip']):

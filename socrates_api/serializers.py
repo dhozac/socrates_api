@@ -109,7 +109,7 @@ class WarrantySerializer(serializers.Serializer):
     valid = serializers.BooleanField(default=False)
     shipping_date = serializers.DateTimeField(required=False)
     next_end_date = serializers.DateTimeField(required=False, allow_null=True)
-    order_number = serializers.CharField(required=False)
+    order_number = serializers.CharField(required=False, allow_null=True)
     entitlements = serializers.DictField(required=False, child=WarrantyEntitlementSerializer())
 
 class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
