@@ -1035,7 +1035,7 @@ def add_to_dns(asset, old_asset=None):
             changed = True
             old_network = NetworkSerializer.get_by_asset_vlan(old_asset, old_asset['provision']['vlan'])
             if 'ip' in old_asset['provision']['vlan']:
-                ipam.ip_address_remove(old_network, asset, old_asset['provision']['hostname'], old_asset['provision']['vlan']['ip']) 
+                ipam.ip_address_remove(old_network, asset, old_asset['provision']['hostname'], old_asset['provision']['vlan']['ip'])
             new_network = NetworkSerializer.get_by_asset_vlan(asset, asset['provision']['vlan'])
             kwargs = {}
             if 'ip' in asset['provision']['vlan'] and ipv4_network_contains(asset['provision']['vlan']['cidr'], asset['provision']['vlan']['ip']):
