@@ -116,7 +116,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
     data['vendor'] = system['vendor']
     data['model'] = system['product']
 
-    if system['configuration']['chassis'] == 'blade':
+    if system['vendor'] != 'Supermicro' and system['configuration']['chassis'] == 'blade':
         data['asset_subtype'] = 'blade'
         dmidata = NamedTemporaryFile()
         dmidata.write(base64.b64decode(raw_asset['intake']['dmidecode']))
@@ -146,6 +146,14 @@ def extract_asset_from_raw(service_tag, final_step=False):
             else:
                 logger.warn("%s: dmidecode returned %d" % (service_tag, p.returncode))
         dmidata.close()
+
+    elif system['vendor'] == 'Supermicro' and 'ipmicfg' in raw_asset['intake'] and 'nodeid' in raw_asset['intake']['ipmicfg']:
+        data['asset_subtype'] = 'blade'
+        data['parent'] = raw_asset['intake']['ipmicfg']['fru']['Chassis Serial number (CS)']
+        if raw_asset['intake']['ipmicfg']['nodeid'].isdigit():
+            data['parent_position'] = [int(raw_asset['intake']['ipmicfg']['nodeid'])]
+        else:
+            data['parent_position'] = [ord(raw_asset['intake']['ipmicfg']['nodeid']) - ord('A') + 1]
 
     data['oob'] = {}
     if 'oob-config' in raw_asset and raw_asset['oob-config'].get('success', False):
