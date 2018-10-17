@@ -982,10 +982,16 @@ def run_playbook(asset, playbook, **kwargs):
     if settings.ANSIBLE_PLAYBOOK_DIR is None:
         return asset
 
+    if settings.ANSIBLE_INVENTORY is None:
+        inventory = ",".join(hosts) + ","
+    else:
+        inventory = settings.ANSIBLE_INVENTORY
+
     p = subprocess.Popen([
         "ansible-playbook",
-        "-i", ",".join(hosts) + ",",
+        "-i", inventory,
         "-e", "@" + extra_vars_temp.name,
+        "-l", ":".join(hosts),
         os.path.join(settings.ANSIBLE_PLAYBOOK_DIR, playbook)
     ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
