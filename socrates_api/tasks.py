@@ -982,7 +982,7 @@ def run_playbook(asset, playbook, **kwargs):
     if settings.ANSIBLE_PLAYBOOK_DIR is None:
         return asset
 
-    if settings.ANSIBLE_INVENTORY is None:
+    if not hasattr(settings, 'ANSIBLE_INVENTORY'):
         inventory = ",".join(hosts) + ","
     else:
         inventory = settings.ANSIBLE_INVENTORY
