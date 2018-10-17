@@ -121,7 +121,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
     service_tag = serializers.CharField(required=True)
     positions = serializers.IntegerField(required=False, allow_null=True)
     parent = serializers.CharField(required=False, allow_null=True)
-    parent_position = serializers.ListField(child=serializers.IntegerField(), required=False)
+    parent_position = serializers.ListField(required=False)
     owner = serializers.CharField(required=False, validators=[validate_group_name])
     owner_can_login = serializers.BooleanField(required=False)
     managers = serializers.ListField(child=serializers.CharField(validators=[validate_group_name]), required=False)
