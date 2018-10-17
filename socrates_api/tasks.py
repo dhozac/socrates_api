@@ -153,7 +153,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
         if raw_asset['intake']['ipmicfg']['nodeid'].isdigit():
             data['parent_position'] = [int(raw_asset['intake']['ipmicfg']['nodeid'])]
         else:
-            data['parent_position'] = [ord(raw_asset['intake']['ipmicfg']['nodeid']) - ord('A') + 1]
+            data['parent_position'] = [raw_asset['intake']['ipmicfg']['nodeid']]
 
     data['oob'] = {}
     if 'oob-config' in raw_asset and raw_asset['oob-config'].get('success', False):
