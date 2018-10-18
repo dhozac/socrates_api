@@ -1909,7 +1909,7 @@ def collect_switch_networks(asset):
         )
         firewall_domains = map(lambda x: x['network']['device'], firewalls)
         switch = url.netloc.split("@")[-1]
-        for domain in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=switch, extra_vars={'url': url}):
+        for domain in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=switch, extra_vars={'url': url, 'collect': 'switch'}):
             try:
                 network = NetworkSerializer.get(
                     reduce(r.or_,
@@ -1940,7 +1940,7 @@ def collect_switch_networks(asset):
 def collect_firewall_networks_ansible(asset, url):
     networks = 0
     hypervisors = map(lambda x: x['service_tag'], AssetSerializer.filter({'asset_type': 'vmcluster', 'state': 'in-use'}))
-    for network in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=url.netloc.split("@")[-1], extra_vars={'url': url}):
+    for network in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=url.netloc.split("@")[-1], extra_vars={'url': url, 'collect': 'firewall'}):
         networks += 1
         try:
             current = NetworkSerializer.get(vrf=network['vrf'], network=network['network'], length=network['length'])
