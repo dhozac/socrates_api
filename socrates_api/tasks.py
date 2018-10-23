@@ -194,8 +194,8 @@ def extract_asset_from_raw(service_tag, final_step=False):
         data['nics'].append(nic)
 
     enclosures = []
+    data['storage'] = []
     if data['vendor'].lower().startswith("dell"):
-        data['storage'] = []
         for i in raw_asset['intake']['storage']:
             controller = {'id': i['ID'], 'name': i['Name']}
             controller['pdisks'] = []
@@ -231,7 +231,6 @@ def extract_asset_from_raw(service_tag, final_step=False):
                 })
 
     elif data['vendor'].lower().startswith("hp"):
-        data['storage'] = []
         for i in raw_asset['intake']['storage']:
             controller = {'id': i['Slot'], 'name': i['Name']}
             controller['pdisks'] = []
