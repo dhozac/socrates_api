@@ -1284,7 +1284,7 @@ def collect_vms_vmware(asset):
     vm_view = vcenter.viewManager.CreateContainerView(vcenter.rootFolder, [pyVmomi.vim.VirtualMachine], True)
     service_tags = set()
     for vm in vm_view.view:
-        if cluster.name != vm.runtime.host.parent.name:
+        if cluster != vm.runtime.host.parent:
             continue
         service_tag = vm_service_tag_vmware(vm)
         service_tags.add(service_tag)
