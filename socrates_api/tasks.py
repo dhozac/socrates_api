@@ -281,7 +281,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
                     continue
                 if not isinstance(device['logicalname'], list):
                     device['logicalname'] = [device['logicalname']]
-                by_id = ["disk/by-id/" + by_id for by_id, node in raw_asset['intake']['by_id_map'].iteritems() if node in device['logicalname'] and by_id.startswith("scsi-")]
+                by_id = ["disk/by-id/" + by_id for by_id, node in raw_asset['intake']['by_id_map'].iteritems() if node in device['logicalname'] and (by_id.startswith("scsi-") or by_id.startswith("ata-"))]
                 if len(by_id) == 0:
                     continue
                 by_id = by_id[0]
