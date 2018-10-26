@@ -360,11 +360,10 @@ def extract_asset_from_raw(service_tag, final_step=False):
         data['cards'].append(card)
 
     # warranty lookup
-    if data.get('vendor', '') != '':
-        try:
-            if asset_get(service_tag).get('supportvendor', '') != '':
-                data['supportvendor'] = asset_get(service_tag).get('supportvendor')
-        except r.errors.ReqlNonExistenceError:
+    if 'vendor' in data:
+        if instance is not None and 'supportvendor' in instance:
+            data['supportvendor'] = instance['supportvendor']
+        elif hasattr(settings, 'SUPPORTVENDORS'):
             data['supportvendor'] = settings.SUPPORTVENDORS[data['vendor']]
     if data.get('supportvendor') == 'dell':
         data['warranty'] = _extract_dell_warranty_from_raw(service_tag)
