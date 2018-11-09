@@ -270,6 +270,9 @@ def extract_asset_from_raw(service_tag, final_step=False):
                     'bays': enclosure['DriveBays'],
                 })
 
+    elif 'storage' in raw_asset['intake']:
+        data['storage'] = raw_asset['intake']['storage']
+
     if 'by_id_map' in raw_asset['intake']:
         vdisks = set([vdisk['by_id'] for controller in data['storage'] for vdisk in controller['vdisks']])
         for storage in map(lambda x: x.value, jsonpath_rw_ext.parse('$..children[?class="storage"]').find(raw_asset['intake']['lshw'])):
