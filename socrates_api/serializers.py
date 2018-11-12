@@ -70,9 +70,13 @@ def validate_group_name(group_name):
         group = Group.objects.get(name=group_name)
         return True
     except Group.DoesNotExist:
-        import ldap
         if hasattr(settings, 'AUTH_LDAP_SERVER_URI'):
-            l = ldap.initialize(settings.AUTH_LDAP_SERVER_URI)
+            import ldap
+            if callable(settings.AUTH_LDAP_SERVER_URI):
+                uri = settings.AUTH_LDAP_SERVER_URI()
+            else:
+                uri = settings.AUTH_LDAP_SERVER_URI
+            l = ldap.initialize(uri)
             if settings.AUTH_LDAP_START_TLS:
                 l.start_tls_s()
             result = settings.AUTH_LDAP_GROUP_SEARCH.search_with_additional_term_string("(cn=%s)").execute(l, filterargs=(group_name,))
@@ -85,9 +89,13 @@ def validate_username(username):
         user = SocratesUser.objects.get(username=username)
         return True
     except SocratesUser.DoesNotExist:
-        import ldap
         if hasattr(settings, 'AUTH_LDAP_SERVER_URI'):
-            l = ldap.initialize(settings.AUTH_LDAP_SERVER_URI)
+            import ldap
+            if callable(settings.AUTH_LDAP_SERVER_URI):
+                uri = settings.AUTH_LDAP_SERVER_URI()
+            else:
+                uri = settings.AUTH_LDAP_SERVER_URI
+            l = ldap.initialize(uri)
             if settings.AUTH_LDAP_START_TLS:
                 l.start_tls_s()
             result = settings.AUTH_LDAP_USER_SEARCH.execute(l, filterargs=(username,))
