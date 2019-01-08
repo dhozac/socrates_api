@@ -93,18 +93,21 @@ def bonding_config(asset):
         for port in ports:
             if 'bond' not in interfaces[port]:
                 interfaces[port]['bond'] = "bond%d" % len(bonds)
+        if ports not in bonds:
+            bonds.append(ports)
         if 'ip' in vlan:
             v = dict(vlan)
             v['network'] = NetworkSerializer.get_by_asset_vlan(asset, v)
             v['network']['ipam'] = ipam.ip_prefix_get(v['network'])
+            base_if = interfaces[port[0]]['bond']
+            if len(ports) == 1:
+                base_if = port[0]
             if v.get('native', False) or len(vlans) == 0:
-                v['config'] = interfaces[ports[0]]['bond']
+                v['config'] = base_if
             else:
-                v['config'] = "%s.%d" % (interfaces[ports[0]]['bond'], v['network']['asset_domain']['vlan_id'])
+                v['config'] = "%s.%d" % (base_if, v['network']['asset_domain']['vlan_id'])
             v['first'] = len(vlans) == 0
             vlans.append(v)
-        if ports not in bonds:
-            bonds.append(ports)
 
     for nic in interfaces.keys():
         if 'remote' in interfaces[nic].keys() and asset['asset_type'] == 'server':
