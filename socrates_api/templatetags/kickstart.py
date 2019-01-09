@@ -99,9 +99,9 @@ def bonding_config(asset):
             v = dict(vlan)
             v['network'] = NetworkSerializer.get_by_asset_vlan(asset, v)
             v['network']['ipam'] = ipam.ip_prefix_get(v['network'])
-            base_if = interfaces[port[0]]['bond']
+            base_if = interfaces[ports[0]]['bond']
             if len(ports) == 1:
-                base_if = port[0]
+                base_if = ports[0]
             if v.get('native', False) or len(vlans) == 0:
                 v['config'] = base_if
             else:
