@@ -5,7 +5,7 @@ import os
 import re
 
 setup(name='socrates_api',
-      version='1.0.14',
+      version='1.0.15',
       license='Apache Software License',
       description='Source of Truth for hardware, virtual machines, and networks',
       author='Klarna Bank AB',
@@ -23,7 +23,7 @@ setup(name='socrates_api',
           'jsonpath_rw_ext',
           'netaddr',
           'deepdiff>3.2.0',
-          'django_rethink',
+          'django_rethink>0.4.0',
       ],
       include_package_data=True,
       zip_safe=False,
