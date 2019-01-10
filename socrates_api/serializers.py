@@ -23,7 +23,7 @@ from django.conf import settings
 from django.contrib.auth.models import Group
 from rest_framework import serializers
 from rest_framework.reverse import reverse
-from django_rethink import r, RethinkSerializer, RethinkObjectNotFound, RethinkMultipleObjectsFound, HistorySerializerMixin, PermissionsSerializer, ReviewSerializer, HistorySerializerMixin, NeedsReviewMixin, HistorySerializer
+from django_rethink import r, RethinkSerializer, RethinkObjectNotFound, RethinkMultipleObjectsFound, HistorySerializerMixin, PermissionsSerializer, ReviewSerializer, HistorySerializerMixin, NeedsReviewMixin, HistorySerializer, validate_group_name, validate_username
 from socrates_api.models import SocratesUser
 
 ASSET_STATES = ['new', 'ready', 'in-use', 'deleted']
@@ -64,44 +64,6 @@ def dict_differences(new, old):
     for key in set(old.keys()).difference(set(new.keys())):
         ret[key] = None
     return ret
-
-def validate_group_name(group_name):
-    try:
-        group = Group.objects.get(name=group_name)
-        return True
-    except Group.DoesNotExist:
-        if hasattr(settings, 'AUTH_LDAP_SERVER_URI'):
-            import ldap
-            if callable(settings.AUTH_LDAP_SERVER_URI):
-                uri = settings.AUTH_LDAP_SERVER_URI()
-            else:
-                uri = settings.AUTH_LDAP_SERVER_URI
-            l = ldap.initialize(uri)
-            if settings.AUTH_LDAP_START_TLS:
-                l.start_tls_s()
-            result = settings.AUTH_LDAP_GROUP_SEARCH.search_with_additional_term_string("(cn=%s)").execute(l, filterargs=(group_name,))
-            if len(result) > 0:
-                return True
-        raise serializers.ValidationError("group %s does not exist" % group_name)
-
-def validate_username(username):
-    try:
-        user = SocratesUser.objects.get(username=username)
-        return True
-    except SocratesUser.DoesNotExist:
-        if hasattr(settings, 'AUTH_LDAP_SERVER_URI'):
-            import ldap
-            if callable(settings.AUTH_LDAP_SERVER_URI):
-                uri = settings.AUTH_LDAP_SERVER_URI()
-            else:
-                uri = settings.AUTH_LDAP_SERVER_URI
-            l = ldap.initialize(uri)
-            if settings.AUTH_LDAP_START_TLS:
-                l.start_tls_s()
-            result = settings.AUTH_LDAP_USER_SEARCH.execute(l, filterargs=(username,))
-            if len(result) > 0:
-                return True
-        raise serializers.ValidationError("user %s does not exist" % username)
 
 class AssetRawSerializer(RethinkSerializer):
     class Meta(RethinkSerializer.Meta):
