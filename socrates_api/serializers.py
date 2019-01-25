@@ -523,20 +523,23 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
             elif new_asset['asset_type'] == 'server':
                 pdisks = dict([(controller['id'], [pdisk['id'] for pdisk in controller['pdisks']]) for controller in new_asset['storage']])
                 for name, disk in new_asset['provision']['storage'].iteritems():
-                    for field in ('controller_id', 'raid', 'pdisks'):
+                    for field in ('raid', 'pdisks'):
                         if field not in disk:
                              raise serializers.ValidationError("provision__storage__%s__%s is required" % (name, field))
-                    if disk['controller_id'] not in pdisks:
-                        raise serializers.ValidationError("provision__storage__%s__controller_id='%s' is not a valid choice (%s)" %
-                            (name, disk['controller_id'], ", ".join(pdisks.keys())))
+                    if not all(['controller_id' in pdisk for pdisk in disk['pdisks']]) and 'controller_id' not in disk:
+                        raise serializers.ValidationError("provision__storage__%s__controller_id is required" % (name))
                     for pdisk in disk['pdisks']:
+                        controller_id = pdisk.get('controller_id', disk.get('controller_id'))
+                        if controller_id not in pdisks:
+                            raise serializers.ValidationError("provision__storage__%s__controller_id='%s' is not a valid choice (%s)" %
+                                (name, controller_id, ", ".join(pdisks.keys())))
                         if 'id' not in pdisk:
                             raise serializers.ValidationError("provision__storage__%s__pdisks__id is required" % name)
-                        if pdisk['id'] not in pdisks[disk['controller_id']]:
+                        if pdisk['id'] not in pdisks[controller_id]:
                             raise serializers.ValidationError("provision__storage__%s__pdisks__id='%s' is not a valid choice" %
                                 (name, pdisk['id']))
                         # This ensures the same disk can only be used once
-                        pdisks[disk['controller_id']].remove(pdisk['id'])
+                        pdisks[controller_id].remove(pdisk['id'])
         else:
             if 'provision' in data and new_asset['state'] == "in-use" and self.instance is not None and (new_asset['asset_type'] != "vm" or username is not None) and not self.instance.get('provisioning', False) and not new_asset.get('provisioning', False) and not new_asset.get('decommissioning', False):
                 raise serializers.ValidationError("Cannot update 'provision' without provisioning set")

@@ -66,9 +66,12 @@ def software_raid_disks(asset):
     result = []
     controller = [controller for controller in asset['storage'] if controller['id'] == asset['provision']['storage']['os']['controller_id']]
     for pdisk in asset['provision']['storage']['os']['pdisks']:
-        for disk in controller[0]['pdisks']:
-            if disk['id'] == pdisk['id']:
-                result.append(disk)
+        for controller in asset['storage']:
+            if controller['id'] == pdisk.get('controller_id', asset['provision']['storage']['os'].get('controller_id')):
+                for disk in controller['pdisks']:
+                    if disk['id'] == pdisk['id']:
+                        result.append(disk)
+                        break
                 break
     return result
 
