@@ -64,7 +64,6 @@ def split_field(string, splitter, field_no):
 @register.filter
 def software_raid_disks(asset):
     result = []
-    controller = [controller for controller in asset['storage'] if controller['id'] == asset['provision']['storage']['os']['controller_id']]
     for pdisk in asset['provision']['storage']['os']['pdisks']:
         for controller in asset['storage']:
             if controller['id'] == pdisk.get('controller_id', asset['provision']['storage']['os'].get('controller_id')):
