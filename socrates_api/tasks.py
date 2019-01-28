@@ -869,7 +869,7 @@ def reconfigure_network_port_ansible(switch_asset, url, asset):
     if asset.get('provisioning', False) or asset.get('maintenance', False) or asset.get('decommissioning', False):
         if 'provision' not in ansible_asset:
             ansible_asset['provision'] = {}
-        elif 'vlan' not in ansible_asset['provision']:
+        if 'vlan' not in ansible_asset['provision']:
             ansible_asset['provision']['vlan'] = {}
         ansible_asset['provision']['vlan']['network'] = NetworkSerializer.get_by_domain_install(domain=switch_asset['switch']['domain'])
         ansible_asset['provision'].pop('vlans', None)
