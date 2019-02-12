@@ -899,7 +899,7 @@ def reconfigure_network_port_ansible(switch_asset, url, asset):
             lambda network: {'asset_domain': network['domains'][switch_asset['switch']['domain']]}
         ).run(conn))
 
-    if asset['asset_type'] == 'network' and 'network' in asset and 'device' in asset['network']:
+    if 'network' in asset and 'device' in asset['network']:
         remote_domain = switch_asset['switch']['domain']
         additional_vlans = list(r.table('networks').filter(
             lambda network: network['domains'].has_fields(
@@ -912,7 +912,7 @@ def reconfigure_network_port_ansible(switch_asset, url, asset):
             lambda network: {'asset_domain': network['domains'][remote_domain]}
         ).run(conn))
 
-    elif asset['asset_type'] == 'network' and 'switch' in asset and 'domain' in asset['switch']:
+    elif 'switch' in asset and 'domain' in asset['switch']:
         remote_domain = switch_asset['switch']['domain']
         additional_vlans = list(r.table('networks').filter(
             lambda network: network['domains'].has_fields(
