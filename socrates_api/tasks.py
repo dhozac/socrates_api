@@ -57,9 +57,7 @@ except ImportError:
     HAS_VMWARE = False
 
 try:
-    import ovirtsdk
-    import ovirtsdk.api
-    import ovirtsdk.xml
+    import ovirtsdk4
     HAS_OVIRT = True
 except ImportError:
     HAS_OVIRT = False
@@ -416,6 +414,19 @@ def extract_asset_from_raw(service_tag, final_step=False):
 
     return True
 
+class DoUntilRetriesExceeded(Exception):
+    pass
+
+def do_until(c, ic=None, wait=5, retries=12):
+    attempt = 0
+    while not c() and attempt < retries:
+        if ic and attempt == 0:
+            ic()
+        time.sleep(wait)
+        attempt = attempt + 1
+    if attempt == retries:
+        raise DoUntilRetriesExceeded()
+
 @shared_task
 def extract_warranty_from_raw(asset):
     update = {'log' : 'Updating warranty from raw'}
@@ -695,12 +706,11 @@ def ipmi_shutdown(self, asset):
         elif asset['asset_subtype'] == 'ovirt':
             parent_asset = AssetSerializer.get(service_tag=asset['parent'])
             api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
-            vm = api.vms.get(id=vm_id_ovirt(asset))
-            if vm.status.state != "down":
-                vm.stop()
-            while api.vms.get(id=vm_id_ovirt(asset)).status.state != "down":
-                time.sleep(5)
-            api.disconnect()
+            vm_service = api.system_service().vms_service().vm_service(vm_id_ovirt(asset))
+            try:
+                do_until(lambda: vm_service.get().status == ovirtsdk4.types.VmStatus.DOWN, ic=lambda: vm_service.stop())
+            finally:
+                api.close()
         elif asset['asset_subtype'] == 'libvirt':
             ipmi_shutdown_libvirt(asset)
     return asset
@@ -723,12 +733,11 @@ def ipmi_poweron(self, asset):
         elif asset['asset_subtype'] == 'ovirt':
             parent_asset = AssetSerializer.get(service_tag=asset['parent'])
             api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
-            vm = api.vms.get(id=vm_id_ovirt(asset))
-            if vm.status.state != "up":
-                vm.start()
-            while api.vms.get(id=vm_id_ovirt(asset)).status.state != "up":
-                time.sleep(5)
-            api.disconnect()
+            vm_service = api.system_service().vms_service().vm_service(vm_id_ovirt(asset))
+            try:
+                do_until(lambda: vm_service.get().status == ovirtsdk4.types.VmStatus.UP, ic=lambda: vm_service.start(), wait=5, retries=18)
+            finally:
+                api.close()
         elif asset['asset_subtype'] == 'libvirt':
             ipmi_poweron_libvirt(asset)
     return asset
@@ -756,13 +765,15 @@ def ipmi_reboot(self, asset):
         elif asset['asset_subtype'] == 'ovirt':
             parent_asset = AssetSerializer.get(service_tag=asset['parent'])
             api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
-            vm = api.vms.get(id=vm_id_ovirt(asset))
-            if vm.status.state == "up":
-                vm.stop()
-            vm.start()
-            while api.vms.get(id=vm_id_ovirt(asset)).status.state != "up":
-                time.sleep(5)
-            api.disconnect()
+            vm_service = api.system_service().vms_service().vm_service(vm_id_ovirt(asset))
+            vm = vm_service.get()
+            if vm.status == ovirtsdk4.types.VmStatus.UP:
+                vm_service.stop()
+            vm_service.start()
+            try:
+                do_until(lambda: vm_service.get().status == ovirtsdk4.types.VmStatus.UP, wait=5, retries=18)
+            finally:
+                api.close()
         elif asset['asset_subtype'] == 'libvirt':
             ipmi_reboot_libvirt(asset)
     return asset
@@ -809,12 +820,12 @@ def ipmi_power_state(self, asset):
         elif asset['asset_subtype'] == 'ovirt':
             parent_asset = AssetSerializer.get(service_tag=asset['parent'])
             api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
-            vm = api.vms.get(id=vm_id_ovirt(asset))
-            if vm.status.state == "up":
+            vm = api.system_service().vms_service().vm_service(vm_id_ovirt(asset)).get()
+            if vm.status == ovirtsdk4.types.VmStatus.UP:
                 ret = 'on'
             else:
                 ret = 'off'
-            api.disconnect()
+            api.close()
             return ret
         elif asset['asset_subtype'] == 'libvirt':
             return ipmi_power_state_libvirt(asset)
@@ -851,15 +862,15 @@ def reconfigure_network_port_ovirt(asset):
         network_serializer = NetworkSerializer.get_by_asset_vlan(domain=asset['parent'], vlan=asset['provision']['vlan'])
     parent_asset = AssetSerializer.get(service_tag=asset['parent'])
     api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
-    vm = api.vms.get(id=vm_id_ovirt(asset))
-    nic = vm.nics.list()[0]
-    new_network = ovirtsdk.xml.params.Network(id=api.networks.get(name=network_serializer['asset_name']).id)
-    if new_network.id != nic.network.id:
-        nic.network = new_network
-        nic.update()
-    update = extract_asset_ovirt(parent_asset, asset, api, vm)
+    nics_service = api.system_service().vms_service().vm_service(vm_id_ovirt(asset)).nics_service()
+    nic = nics_service.list(follow='vnic_profile')[0]
+    new_network = get_vnic_profile_ovirt(api, network_serializer)
+    if new_network.id != nic.vnic_profile.id:
+        nic.vnic_profile = new_network
+        nics_service.nic_service(nic.id).update(nic)
+    update = extract_asset_ovirt(parent_asset, asset, api, api.system_service().vms_service().vm_service(vm_id_ovirt(asset)).get())
     update['log'] = 'Reconfigured network port'
-    api.disconnect()
+    api.close()
     return asset_update(asset, update)
 
 def reconfigure_network_port_ansible(switch_asset, url, asset):
@@ -1210,7 +1221,7 @@ def find_network_by_vlan_vmware(cluster, network_serializer):
         elif isinstance(possible_network, pyVmomi.vim.Network):
             if possible_network.name not in pg_lookup.keys():
                 continue
-            if pg_lookup[possible_network.name] == network_serializer['asset_domain']['vlan_id']:
+            if pg_lookup[possible_network.name] == network_serializer['asset_domain']['vlan_id'] or possible_network.name == network_serializer['asset_domain']['name']:
                 return possible_network, pyVmomi.vim.VirtualEthernetCardNetworkBackingInfo(
                     deviceName=possible_network.name,
                     network=possible_network,
@@ -1580,15 +1591,15 @@ def remove_network_vmware(asset, network):
 
 def connect_hypervisor_ovirt(parent_asset):
     url, path = parent_asset['url'].split("#", 1)
-    api = ovirtsdk.api.API(
-        str(url),
+    api = ovirtsdk4.Connection(
+        url=str(url),
         username=settings.SOCRATES_OVIRT_USERNAME,
         password=settings.SOCRATES_OVIRT_PASSWORD,
         insecure=settings.SOCRATES_OVIRT_INSECURE,
     )
     datacenter_name, cluster_name = path.split("/", 1)
-    datacenter = api.datacenters.get(name=str(datacenter_name))
-    cluster = api.clusters.get(name=str(cluster_name))
+    datacenter = ovirtsdk4.types.DataCenter(name=str(datacenter_name))
+    cluster = ovirtsdk4.types.Cluster(name=str(cluster_name))
     return api, datacenter, cluster
 
 def vm_service_tag_ovirt(vm):
@@ -1608,82 +1619,94 @@ def extract_asset_ovirt(parent_asset, asset, api, vm):
         },
     }
 
+    vm_service = api.system_service().vms_service().vm_service(vm.id)
     update['nics'] = []
-    for id, nic in enumerate([x for x in vm.nics.list()]):
-        vlan_name = api.networks.get(id=nic.network.id).name
+    for id, nic in enumerate([x for x in vm_service.nics_service().list(follow='vnic_profile')]):
         update['nics'].append({
             'name': "eth%d" % id,
             'mac': nic.mac.address,
             'remote': {
                 'domain': parent_asset['service_tag'],
-                'name': vlan_name,
+                'name': nic.vnic_profile.name,
             },
         })
 
     update['storage'] = []
-    for disk in vm.disks.list():
+    for disk in vm_service.disk_attachments_service().list(follow='disk'):
+        storage_domain = api.follow_link(disk.disk.storage_domains[0]).name
         for data_class, volumes in parent_asset['storage'][0]['datastores'].iteritems():
-            if api.storagedomains.get(id=disk.storage_domains.storage_domain[0].id).name in volumes:
+            if storage_domain in volumes:
                 break
         else:
             data_class = None
         update['storage'].append({
-            'capacity': disk.size,
-            'filename': disk.name,
+            'capacity': disk.disk.provisioned_size,
+            'filename': disk.disk.name,
             'class': data_class,
         })
 
     return update
 
+def get_vnic_profile_ovirt(api, network_serializer):
+    return [p for p in api.system_service().vnic_profiles_service().list() if p.name == network_serializer['asset_name']][0]
+
+def get_storage_domain_ovirt(storage_domains_service, storage_domain):
+    return [s for s in storage_domains_service.list() if s.name == storage_domain][0]
+
 ovirt_filename_re = re.compile(r'[A-Za-z0-9-_.]*_(.+)')
 def reprovision_vm_ovirt(asset, parent_asset):
     api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
-    vm = api.vms.get(id=vm_id_ovirt(asset))
+    vm_service = api.system_service().vms_service().vm_service(vm_id_ovirt(asset))
+    vm = vm_service.get()
 
     vm.name = asset['provision']['hostname']
     vm.cpu.topology.cores = asset['provision']['cpus']
     vm.memory = asset['provision']['ram']
-    vm = vm.update()
+    vm = vm_service.update(vm=vm)
 
     seen_disks = set()
     wait_for_disks = []
-    for disk in vm.disks.list():
-        m = ovirt_filename_re.match(disk.name)
+    for disk in vm_service.disk_attachments_service().list(follow='disk'):
+        m = ovirt_filename_re.match(disk.disk.name)
         if m:
             name = m.group(1)
         else:
-            raise Exception("Unknown disk name format: %s" % disk.name)
+            raise Exception("Unknown disk name format: %s" % disk.disk.name)
         seen_disks.add(name)
         if name in asset['provision']['storage']:
-            if abs(disk.size - asset['provision']['storage'][name]['size']) > 1024:
-                disk.provisioned_size = asset['provision']['storage'][name]['size']
+            if abs(disk.disk.provisioned_size - asset['provision']['storage'][name]['size']) > 1024:
+                disk.disk.provisioned_size = asset['provision']['storage'][name]['size']
                 disk.update()
                 wait_for_disks.append(disk.id)
 
+    storage_domains_service = api.system_service().data_centers_service().data_center_service(datacenter.id).storage_domains_service()
     for disk_name in sorted(set(asset['provision']['storage'].keys()) - seen_disks):
         disk = asset['provision']['storage'][disk_name]
-        storage_domains = sorted(map(lambda sd: api.storagedomains.get(name=str(sd)), parent_asset['storage'][0]['datastores'][disk['class']]), key=lambda sd: sd.available)
-        wait_for_disks.append(vm.disks.add(ovirtsdk.xml.params.Disk(
-            storage_domains=ovirtsdk.xml.params.StorageDomains(storage_domain=[storage_domains[-1]]),
-            name='%s_%s' % (asset['provision']['hostname'], disk_name),
-            size=disk['size'],
-            interface='virtio',
-            format='raw',
-            sparse=True,
-            bootable=disk_name == 'os'
-        )).id)
+        storage_domains = sorted(map(lambda sd: get_storage_domain_ovirt(storage_domains_service, str(sd)), parent_asset['storage'][0]['datastores'][disk['class']]), key=lambda sd: sd.available)
+        vm_service.disk_attachments_service().add(ovirtsdk4.types.DiskAttachment(
+            active=True,
+            interface=ovirtsdk4.types.DiskInterface.VIRTIO,
+            bootable=disk_name == 'os',
+            disk=ovirtsdk4.types.Disk(
+                name='%s_%s' % (asset['provision']['hostname'], disk_name),
+                format=ovirtsdk4.types.DiskFormat.RAW,
+                sparse=False,
+                provisioned_size=disk['size'],
+                storage_domains=[storage_domains[-1]],
+            ),
+        ))
 
     for disk_name in sorted(seen_disks - set(asset['provision']['storage'].keys())):
-        disk = vm.disks.get(name='%s_%s' % (asset['provision']['hostname'], disk_name))
-        disk.delete()
+        for disk in vm_service.disk_attachments_service().list(follow='disk'):
+            if disk.disk.name == '%s_%s' % (asset['provision']['hostname'], disk_name):
+                vm_service.disk_attachments_service().attachment_service(disk.id).remove(detach_only=False)
 
-    while not all([api.disks.get(id=disk).status.state == 'ok' for disk in wait_for_disks]):
-        time.sleep(5)
+    # FIXME: Check disk states
 
     update = {'log': 'Reprovisioned VM'}
     update.update(extract_asset_ovirt(parent_asset, asset, api, vm))
 
-    api.disconnect()
+    api.close()
     return asset_update(asset, update)
 
 def provision_vm_ovirt(asset, parent_asset):
@@ -1693,55 +1716,74 @@ def provision_vm_ovirt(asset, parent_asset):
     update = {'asset_subtype': 'ovirt'}
     api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
 
-    vm = api.vms.add(ovirtsdk.xml.params.VM(
+    datacenter = api.system_service().data_centers_service().list(name=datacenter.name)[0]
+
+    os = OperatingSystemSerializer.get(name=asset['provision']['os'])
+
+    vm = api.system_service().vms_service().add(ovirtsdk4.types.Vm(
         name=asset['provision']['hostname'],
-        cpu=ovirtsdk.xml.params.CPU(topology=ovirtsdk.xml.params.CpuTopology(cores=asset['provision']['cpus'])),
+        cpu=ovirtsdk4.types.Cpu(topology=ovirtsdk4.types.CpuTopology(cores=asset['provision']['cpus'])),
         memory=asset['provision']['ram'],
         cluster=cluster,
-        template=api.templates.get('Blank'),
-        type_="server",
-        os=ovirtsdk.xml.params.OperatingSystem(boot=[ovirtsdk.xml.params.Boot(dev="hd"), ovirtsdk.xml.params.Boot(dev="network")]),
-        high_availability=ovirtsdk.xml.params.HighAvailability(enabled=True),
+        template=ovirtsdk4.types.Template(name='Blank'),
+        type=ovirtsdk4.types.VmType.SERVER,
+        os=ovirtsdk4.types.OperatingSystem(
+            type=os.get('ids', {}).get('ovirt', 'other'),
+            boot=ovirtsdk4.types.Boot(devices=[ovirtsdk4.types.BootDevice.HD, ovirtsdk4.types.BootDevice.NETWORK]),
+        ),
+        high_availability=ovirtsdk4.types.HighAvailability(enabled=True),
     ))
 
+    vm_service = api.system_service().vms_service().vm_service(vm.id)
+
     network_serializer = NetworkSerializer.get_by_domain_install(domain=parent_asset['service_tag'])
-    vm.nics.add(ovirtsdk.xml.params.NIC(name='nic1', network=ovirtsdk.xml.params.Network(name=network_serializer['asset_name']), interface='virtio'))
+    vm_service.nics_service().add(ovirtsdk4.types.Nic(
+        name='nic1',
+        vnic_profile=get_vnic_profile_ovirt(api, network_serializer),
+        interface=ovirtsdk4.types.NicInterface.VIRTIO,
+    ))
 
     nic_id = 2
     for vlan in asset['provision'].get('vlans', []):
         network_serializer = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=vlan)
-        vm.nics.add(ovirtsdk.xml.params.NIC(name='nic%d' % nic_id, network=ovirtsdk.xml.params.Network(name=network_serializer['asset_name']), interface='virtio'))
+        vm_service.nics_service().add(ovirtsdk4.types.Nic(
+            name='nic%d' % nic_id,
+            vnic_profile=get_vnic_profile_ovirt(api, network_serializer),
+            interface=ovirtsdk4.types.NicInterface.VIRTIO,
+        ))
         nic_id += 1
 
+    storage_domains_service = api.system_service().data_centers_service().data_center_service(datacenter.id).storage_domains_service()
     for disk_name, disk in asset['provision']['storage'].iteritems():
-        storage_domains = sorted(map(lambda sd: api.storagedomains.get(name=str(sd)), parent_asset['storage'][0]['datastores'][disk['class']]), key=lambda sd: sd.available)
-        vm.disks.add(ovirtsdk.xml.params.Disk(
-            storage_domains=ovirtsdk.xml.params.StorageDomains(storage_domain=[storage_domains[-1]]),
-            name='%s_%s' % (asset['provision']['hostname'], disk_name),
-            size=disk['size'],
-            interface='virtio',
-            format='raw',
-            sparse=True,
-            bootable=disk_name == 'os'
+        storage_domains = sorted(map(lambda sd: get_storage_domain_ovirt(storage_domains_service, str(sd)), parent_asset['storage'][0]['datastores'][disk['class']]), key=lambda sd: sd.available)
+        vm_service.disk_attachments_service().add(ovirtsdk4.types.DiskAttachment(
+            active=True,
+            interface=ovirtsdk4.types.DiskInterface.VIRTIO,
+            bootable=disk_name == 'os',
+            disk=ovirtsdk4.types.Disk(
+                name='%s_%s' % (asset['provision']['hostname'], disk_name),
+                format=ovirtsdk4.types.DiskFormat.RAW,
+                sparse=False,
+                provisioned_size=disk['size'],
+                storage_domains=[storage_domains[-1]],
+            ),
         ))
 
-    while api.vms.get(id=vm.id).status.state != 'down':
-        time.sleep(5)
-    while not all([disk.status.state == 'ok' for disk in api.vms.get(id=vm.id).disks.list()]):
-        time.sleep(5)
+    do_until(lambda: vm_service.get().status == ovirtsdk4.types.VmStatus.DOWN)
+    # FIXME: Check disk states
 
-    update.update(extract_asset_ovirt(parent_asset, asset, api, api.vms.get(id=vm.id)))
+    update.update(extract_asset_ovirt(parent_asset, asset, api, vm_service.get()))
     update['log'] = 'Provisioned to oVirt'
     asset = asset_update(asset, update)
 
-    api.disconnect()
+    api.close()
 
     return asset
 
 def collect_vms_ovirt(asset):
     api, datacenter, cluster = connect_hypervisor_ovirt(asset)
     service_tags = set()
-    for vm in api.vms.list():
+    for vm in api.system_service().vms_service().list():
         service_tag = vm_service_tag_ovirt(vm)
         service_tags.add(service_tag)
         try:
@@ -1766,26 +1808,32 @@ def collect_vms_ovirt(asset):
             vm_asset.save()
 
     remove_vm_service_tags(asset, service_tags)
-    api.disconnect()
+    api.close()
 
 def add_network_ovirt(asset, network):
     api, datacenter, cluster = connect_hypervisor_ovirt(asset)
-    net = api.networks.add(ovirtsdk.xml.params.Network(
+    network = api.system_service().networks_service().add(ovirtsdk4.types.Network(
         name=network['domains'][asset['service_tag']]['name'],
         data_center=datacenter,
         description="%s/%d" % (network['network'], network['length']),
-        vlan=ovirtsdk.xml.params.VLAN(id="%d" % network['domains'][asset['service_tag']]['vlan_id']),
+        vlan=ovirtsdk4.types.Vlan(id=network['domains'][asset['service_tag']]['vlan_id']),
     ))
-    cluster.networks.add(net)
-    api.disconnect()
+    api.system_service().networks_service().network_service(network.id).network_labels_service().add(ovirtsdk4.types.NetworkLabel(id=cluster.name))
+    cluster = api.system_service().clusters_service().list(name=cluster.name)[0]
+    api.system_service().clusters_service().cluster_service(cluster.id).networks_service().add(network)
+    api.close()
     return asset
 
 def remove_network_ovirt(asset, network):
     api, datacenter, cluster = connect_hypervisor_ovirt(asset)
     name = network['domains'][asset['service_tag']]['name']
-    network = api.networks.get(name=name)
-    network.delete()
-    api.disconnect()
+    vnic_profile = api.system_service().vnic_profiles_service().list(name=name)
+    if vnic_profile:
+        api.system_service().vnic_profiles_service().vnic_profile_service(vnic_profile[0].id).remove()
+    network = api.system_service().networks_service().list(name=name)
+    if network:
+        api.system_service().networks_service().network_service(network[0].id).remove()
+    api.close()
     return asset
 
 @shared_task
@@ -1811,9 +1859,9 @@ def remove_vm_vmware(asset):
 def remove_vm_ovirt(asset):
     parent_asset = AssetSerializer.get(service_tag=asset['parent'])
     api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
-    vm = api.vms.get(id=vm_id_ovirt(asset))
-    task = vm.delete(async=False)
-    api.disconnect()
+    vm_service = api.system_service().vms_service().vm_service(vm_id_ovirt(asset))
+    vm_service.remove()
+    api.close()
     return asset
 
 @shared_task

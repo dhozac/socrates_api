@@ -809,8 +809,8 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
                     if 'nics' in switch:
                         tasks.append(reconfigure_network_port.si(switch))
             elif domain in self.firewalls:
-                tasks.append(task.si(self.firewalls[domain][0], network))
                 for firewall in self.firewalls[domain]:
+                    tasks.append(task.si(firewall, network))
                     tasks.append(reconfigure_network_port.si(firewall))
 
         post_tasks.append(rethinkdb_unlock.si(name="network-management", token=token))
