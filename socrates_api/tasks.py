@@ -700,14 +700,16 @@ def ipmi_shutdown(self, asset):
         except IPMIException as e:
             self.retry(exc=e, countdown=3, max_retries=40)
     elif asset['asset_type'] == 'vm':
-        if asset['asset_subtype'] == 'vmware':
-            parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+        parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+        if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
+            url = urlparse.urlparse(parent_asset['url'])
+            run_playbook(asset, url.path.lstrip("/") + "shutdown.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+        elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
             vm = find_vm_vmware(si, datacenter, asset)
             wait_for_task_completion_vmware(vm.PowerOffVM_Task())
             pyVim.connect.Disconnect(si)
         elif asset['asset_subtype'] == 'ovirt':
-            parent_asset = AssetSerializer.get(service_tag=asset['parent'])
             api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
             vm_service = api.system_service().vms_service().vm_service(vm_id_ovirt(asset))
             try:
@@ -726,15 +728,17 @@ def ipmi_poweron(self, asset):
         except IPMIException as e:
             self.retry(exc=e, countdown=3, max_retries=40)
     elif asset['asset_type'] == 'vm':
-        if asset['asset_subtype'] == 'vmware':
-            parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+        parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+        if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
+            url = urlparse.urlparse(parent_asset['url'])
+            run_playbook(asset, url.path.lstrip("/") + "poweron.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+        elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
             vm = find_vm_vmware(si, datacenter, asset)
             if vm.runtime.powerState == 'poweredOff':
                 wait_for_task_completion_vmware(vm.PowerOnVM_Task())
             pyVim.connect.Disconnect(si)
         elif asset['asset_subtype'] == 'ovirt':
-            parent_asset = AssetSerializer.get(service_tag=asset['parent'])
             api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
             vm_service = api.system_service().vms_service().vm_service(vm_id_ovirt(asset))
             try:
@@ -756,8 +760,11 @@ def ipmi_reboot(self, asset):
         except IPMIException as e:
             self.retry(exc=e, countdown=3, max_retries=40)
     elif asset['asset_type'] == 'vm':
-        if asset['asset_subtype'] == 'vmware':
-            parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+        parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+        if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
+            url = urlparse.urlparse(parent_asset['url'])
+            run_playbook(asset, url.path.lstrip("/") + "reboot.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+        elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
             vm = find_vm_vmware(si, datacenter, asset)
             if vm.runtime.powerState == 'poweredOff':
@@ -766,7 +773,6 @@ def ipmi_reboot(self, asset):
                 wait_for_task_completion_vmware(vm.ResetVM_Task())
             pyVim.connect.Disconnect(si)
         elif asset['asset_subtype'] == 'ovirt':
-            parent_asset = AssetSerializer.get(service_tag=asset['parent'])
             api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
             vm_service = api.system_service().vms_service().vm_service(vm_id_ovirt(asset))
             vm = vm_service.get()
@@ -810,8 +816,11 @@ def ipmi_power_state(self, asset):
         else:
             return 'unknown (asset missing oob)'
     elif asset['asset_type'] == 'vm':
-        if asset['asset_subtype'] == 'vmware':
-            parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+        parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+        if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
+            url = urlparse.urlparse(parent_asset['url'])
+            return run_playbook_with_output(asset, url.path.lstrip("/") + "power-state.yml", extra_vars={'parent_asset': parent_asset, 'url': url})['result']
+        elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
             vm = find_vm_vmware(si, datacenter, asset)
             if vm.runtime.powerState == 'poweredOn':
@@ -821,7 +830,6 @@ def ipmi_power_state(self, asset):
             pyVim.connect.Disconnect(si)
             return ret
         elif asset['asset_subtype'] == 'ovirt':
-            parent_asset = AssetSerializer.get(service_tag=asset['parent'])
             api, datacenter, cluster = connect_hypervisor_ovirt(parent_asset)
             vm = api.system_service().vms_service().vm_service(vm_id_ovirt(asset)).get()
             if vm.status == ovirtsdk4.types.VmStatus.UP:
@@ -946,6 +954,28 @@ def reconfigure_network_port_ansible(switch_asset, url, asset):
                      'additional_vlans': additional_vlans,
                  })
 
+def reconfigure_network_port_vm_ansible(parent_asset, url, asset):
+    ansible_asset = asset_get(asset['service_tag'])
+
+    if asset.get('provisioning', False):
+        if 'provision' not in ansible_asset:
+            ansible_asset['provision'] = {}
+        if 'vlan' not in ansible_asset['provision']:
+            ansible_asset['provision']['vlan'] = {}
+        ansible_asset['provision']['vlan']['network'] = NetworkSerializer.get_by_domain_install(domain=parent_asset['service_tag'])
+        ansible_asset['provision'].pop('vlans', None)
+    elif 'provision' in ansible_asset:
+        if 'vlan' in ansible_asset['provision']:
+            ansible_asset['provision']['vlan']['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=ansible_asset['provision']['vlan'])
+        for vlan in ansible_asset['provision'].get('vlans', []):
+            vlan['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=vlan)
+
+    run_playbook(ansible_asset, url.path.lstrip("/") + "reconfigure.yml",
+                 switch=switch, extra_vars={
+                     'parent_asset': parent_asset,
+                     'url': url,
+                 })
+
 @shared_task
 def reconfigure_network_port(asset):
     if asset['asset_type'] in ('server', 'network', 'storage'):
@@ -958,7 +988,11 @@ def reconfigure_network_port(asset):
             else:
                 raise Exception("Unknown switch URL scheme for %s" % switch_asset['service_tag'])
     elif asset['asset_type'] == 'vm':
-        if asset['asset_subtype'] == 'vmware':
+        parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+        if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
+            url = urlparse.urlparse(parent_asset['url'])
+            reconfigure_network_port_vm_ansible(parent_asset, url, asset)
+        elif asset['asset_subtype'] == 'vmware':
             asset = reconfigure_network_port_vmware(asset)
         elif asset['asset_subtype'] == 'ovirt':
             asset = reconfigure_network_port_ovirt(asset)
@@ -1842,7 +1876,11 @@ def remove_network_ovirt(asset, network):
 @shared_task
 def provision_vm(asset):
     parent_asset = AssetSerializer.get(service_tag=asset['parent'])
-    if parent_asset['asset_subtype'] == 'vmware':
+    if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
+        url = urlparse.urlparse(parent_asset['url'])
+        update = run_playbook_with_output(asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+        return asset_update(asset, update)
+    elif parent_asset['asset_subtype'] == 'vmware':
         return provision_vm_vmware(asset, parent_asset)
     elif parent_asset['asset_subtype'] == 'ovirt':
         return provision_vm_ovirt(asset, parent_asset)
@@ -1869,16 +1907,53 @@ def remove_vm_ovirt(asset):
 
 @shared_task
 def remove_vm(asset):
-    if asset['asset_subtype'] == 'vmware':
+    parent_asset = AssetSerializer.get(service_tag=asset['parent'])
+    if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
+        url = urlparse.urlparse(parent_asset['url'])
+        update = run_playbook_with_output(asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+        return asset_update(asset, update)
+    elif asset['asset_subtype'] == 'vmware':
         return remove_vm_vmware(asset)
     elif asset['asset_subtype'] == 'ovirt':
         return remove_vm_ovirt(asset)
     elif asset['asset_subtype'] == 'libvirt':
         return remove_vm_libvirt(asset)
 
+def collect_vms_ansible(asset):
+    url = urlparse.urlparse(asset['url'])
+    vms = run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", extra_vars={'url': url})
+    service_tags = set()
+    for vm in vms:
+        service_tags.add(vm['service_tag'])
+        try:
+            vm_asset = AssetSerializer.get(service_tag=service_tag)
+            vm['log'] = 'Discovered VM'
+            if vm_asset['state'] != 'ready':
+                vm['state'] = 'in-use'
+            asset_update(vm_asset, vm)
+        except RethinkObjectNotFound:
+            data = {
+                'state': 'in-use',
+                'asset_type': 'vm',
+                'asset_subtype': asset['asset_subtype'],
+                'version': 1,
+                'service_tag': vm['service_tag'],
+                'parent': asset['service_tag'],
+                'log': 'Discovered VM',
+            }
+            data.update(vm)
+            vm_asset = AssetSerializer(None, data=data)
+            vm_asset.is_valid(raise_exception=True)
+            vm_asset.save()
+
+    remove_vm_service_tags(asset, service_tags)
+    return len(vms)
+
 @shared_task
 def collect_vms(asset):
-    if asset['asset_subtype'] == 'vmware':
+    if 'url' in asset and asset['url'].startswith("ansible://"):
+        return collect_vms_ansible(asset)
+    elif asset['asset_subtype'] == 'vmware':
         return collect_vms_vmware(asset)
     elif asset['asset_subtype'] == 'ovirt':
         return collect_vms_ovirt(asset)
