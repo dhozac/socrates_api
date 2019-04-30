@@ -1,0 +1,14 @@
+#!ipxe
+
+prompt --key 0x02 --timeout 2000 Press Ctrl-B for the iPXE command line... && shell || goto retry_dhcp
+
+:retry_dhcp
+dhcp || goto retry_dhcp
+echo DHCP success!
+set hmackey <<<THEKEY>>>
+iseq ${manufacturer} Supermicro && set myserial ${board-serial} ||
+iseq ${manufacturer} oVirt && set myserial ovirt-${uuid} ||
+isset ${myserial} || set myserial ${serial}
+hmac SHA256 ${hmackey} ${myserial}
+chain https://socrates.domain/boot/${myserial:uristring}?hmac=${hmac} || \
+chain http://socrates.domain/boot/${myserial:uristring}?hmac=${hmac}
