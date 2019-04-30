@@ -147,7 +147,8 @@ def extract_asset_from_raw(service_tag, final_step=False):
 
     elif system['vendor'] == 'Supermicro' and 'ipmicfg' in raw_asset['intake'] and 'nodeid' in raw_asset['intake']['ipmicfg']:
         data['asset_subtype'] = 'blade'
-        data['parent'] = raw_asset['intake']['ipmicfg']['fru']['Chassis Serial number (CS)']
+        if 'chassis' in raw_asset['intake']['ipmicfg']:
+            data['parent'] = raw_asset['intake']['ipmicfg']['chassis']
         if raw_asset['intake']['ipmicfg']['nodeid'].isdigit():
             data['parent_position'] = [int(raw_asset['intake']['ipmicfg']['nodeid'])]
         else:
