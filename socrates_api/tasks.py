@@ -2106,29 +2106,13 @@ def collect_networks():
 @shared_task
 def begin_maintenance(asset):
     if asset.get('provision') and asset['provision'].get('hostname'):
-        schedule_and_propagate_downtime(asset)
+        return run_playbook(asset, 'maintenance-begin.yml')
     return asset
 
 @shared_task
 def end_maintenance(asset):
-    #FIXME: remove scheduled downtime, OP5 API is lacking this feature. Awaiting https://jira.op5.com/browse/MON-6502
-    return asset
-
-def schedule_and_propagate_downtime(asset):
-    url = settings.MONITOR_API_URL + settings.MONITOR_SCHEDULE_DOWNTIME_ENDPOINT
-    user = settings.SOCRATES_OP5_USERNAME
-    pwd = settings.SOCRATES_OP5_PASSWORD
-    timestamp = int(time.time())
-
-    data = {"host_name": asset['provision']['hostname'],
-            "duration": settings.MONITOR_DOWNTIME_DEFAULT_DURATION,
-            "fixed": True,
-            "start_time": timestamp,
-            "end_time": timestamp+settings.MONITOR_DOWNTIME_DEFAULT_DURATION,
-            "trigger_id": 0,
-            "comment": "downtime scheduled from Socrates"}
-
-    r = requests.post(url, headers=settings.MONITOR_API_HEADERS, auth=(user, pwd), data=json.dumps(data))
+    if asset.get('provision') and asset['provision'].get('hostname'):
+        return run_playbook(asset, 'maintenance-end.yml')
     return asset
 
 @shared_task
