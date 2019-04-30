@@ -666,6 +666,8 @@ def send_no_warranty_report(recipients):
 
 @shared_task
 def asset_update(asset, update, **kwargs):
+    if not update:
+        return asset
     if 'version' not in update:
         update['version'] = asset['version']
     serializer = AssetSerializer(asset, data=update, partial=True, **kwargs)
