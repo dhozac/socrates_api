@@ -6,6 +6,8 @@ import subprocess
 import json
 import re
 import time
+import shlex
+import glob
 
 def fail_json(msg):
     json.dump({'failed': True, 'msg': msg}, sys.stdout)
@@ -24,6 +26,22 @@ def find_by_id_symlink(device):
         if symlink.startswith("disk/by-id/scsi-"):
             return symlink
     return device
+
+def find_by_path_symlink(device):
+    rc, stdout, stderr = call_with_output(["udevadm", "info", "--name=%s" % device, "--query=symlink", "--export"], "Failed to get by-id path for %s" % device)
+    for symlink in stdout.split():
+        if symlink.startswith("disk/by-path/"):
+            return symlink.replace("disk/by-path/", "")
+    return device
+
+def dehumanize(size):
+    suffix = {
+        'MB': 1024 ** 2,
+        'GB': 1024 ** 3,
+        'TB': 1024 ** 4,
+    }
+    value, unit = size.split()
+    return int(float(value) * suffix[unit])
 
 def parse_om(suffix, filters=""):
     filters = [x.lower() for x in filters]
@@ -146,3 +164,88 @@ def hp_disks():
         controller['enclosures'] = parse_hpssacli(out, enclosure_re, lambda m: {'ID': "%s:%s" % (m.group(2), m.group(3)), 'Name': m.group(1)}, ['VendorID', 'SerialNumber', 'FirmwareVersion', 'DriveBays', 'Location'])
 
     return controllers
+
+def generic_disks():
+    controllers = {}
+
+    rc, out, err = call_with_output(["/opt/MegaRAID/storcli/storcli64", "show", "J"], "Failed to run storcli64 show %(returncode)d:\n%(err)s\n")
+    data = json.loads(out)
+    for storcli_controller in data['Controllers'][0]['Response Data'].get('System Overview', []):
+        controller = {
+            'id': str(storcli_controller['Ctl']),
+            'type': 'storcli',
+            'product': '',
+            'vdisks': [],
+            'pdisks': [],
+        }
+        rc, out, err = call_with_output(["/opt/MegaRAID/storcli/storcli64", "/c%s" % controller['id'], "show", "all", "J"], "Failed to run storcli64 /c%s show %%(returncode)d:\n%%(err)s\n" % controller['id'])
+        controller_data = json.loads(out)
+        controller['product'] = controller_data['Controllers'][0]['Response Data']['Basics']['Model']
+        for vdisk in controller_data['Controllers'][0]['Response Data'].get('VD LIST', []):
+            device = os.path.basename(
+                glob.glob(("/sys/bus/pci/devices/0000:%(Bus Number)02x:%(Device Number)02x.%(Function Number)x/host*/target*/*:%%s/block/*" % controller_data['Controllers'][0]['Response Data']['Bus']) % vdisk['DG/VD'].split("/")[1])[0]
+            )
+            controller['vdisks'].append({
+                'id': vdisk['DG/VD'],
+                'raid': vdisk['TYPE'].replace("RAID", "RAID-"),
+                'name': vdisk['Name'],
+                'by_id': find_by_id_symlink(device),
+                'by_path': find_by_path_symlink(device),
+                'pdisks': [],
+            })
+        for pdisk in controller_data['Controllers'][0]['Response Data'].get('PD LIST', []):
+            controller['pdisks'].append({
+                'id': pdisk['EID:Slt'],
+                'vendor': pdisk['Model'],
+                'capacity': dehumanize(pdisk['Size']),
+                'bus': pdisk['Intf'],
+                'media': pdisk['Med'],
+            })
+            for vdisk in controller['vdisks']:
+                if vdisk['id'].startswith("%s/" % pdisk['DG']):
+                    vdisk['pdisks'].append({'id': pdisk['EID:Slt']})
+        controllers[controller['id']] = controller
+
+    rc, out, err = call_with_output(["lsblk", "-P", "-b", "--output", "NAME,SERIAL,ROTA,SIZE,TYPE,VENDOR,MODEL"], "Failed to list block devices %(returncode)d:\n%(err)s\n")
+    devices = {}
+    for line in out.splitlines():
+        info = dict([x.split("=", 1) for x in shlex.split(line)])
+        devices[info['NAME']] = info
+
+    real_vdisks = [vdisk['by_path'] for controller in controllers.values() for vdisk in controller['vdisks']]
+    disks = filter(lambda x: not x.rstrip("0123456789").endswith("-part") and x not in real_vdisks, os.listdir("/dev/disk/by-path"))
+    for disk in disks:
+        controller, disk_type, disk_id = disk.rsplit("-", 2)
+        if controller not in controllers:
+            controllers[controller] = {'id': controller, 'type': 'direct', 'vdisks': [], 'pdisks': []}
+        device = os.path.basename(os.readlink(os.path.join("/dev/disk/by-path/" + disk)))
+        controllers[controller]['pdisks'].append({
+            'id': '-'.join([disk_type, disk_id]),
+            'by_path': disk,
+            'vendor': devices[device]['VENDOR'],
+            'model': devices[device]['MODEL'],
+            'serial': devices[device]['SERIAL'],
+            'capacity': int(devices[device]['SIZE']),
+            'media': 'SSD' if devices[device]['ROTA'] == '0' else 'HDD',
+        })
+        rc, out, err = call_with_output(["mdadm", "-E", "/dev/disk/by-path/%s-part2" % disk], "Failed to examine disk %s with return %%(returncode)d:\n%%(err)s\n" % disk, success=[0, 1])
+        if rc != 0:
+            continue
+        examined = dict([line.split(":", 1) for line in out.splitlines() if ':' in line])
+        if 'Name' not in examined:
+            continue
+        examined['Name'] = re.sub(r'^([^ \t]*:)?([^ \t:]*) .*', r'\2', examined['Name'])
+        for vdisk in controllers[controller]['vdisks']:
+            if vdisk['name'] == examined['Name']:
+                vdisk['pdisks'].append({'id': '-'.join([disk_type, disk_id]), 'uuid': examined['Device UUID']})
+                break
+        else:
+            controllers[controller]['vdisks'].append({
+                'id': examined['Array UUID'],
+                'by_id': 'md-uuid-' + examined['Array UUID'],
+                'name': examined['Name'],
+                'raid': examined['Raid Level'].replace("raid", "RAID-"),
+                'pdisks': [{'id': '-'.join([disk_type, disk_id]), 'uuid': examined['Device UUID']}],
+            })
+
+    return controllers.values()

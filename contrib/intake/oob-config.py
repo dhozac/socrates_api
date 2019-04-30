@@ -189,6 +189,20 @@ omconfig chassis pwrmanagement config=profile profile=maxperformance
 
         json.dump({'success': True, 'failed': False, 'username': 'root', 'password': password, 'msg': 'Configured iLO', 'log': "\n".join([out, err])}, sys.stdout)
 
+    elif system_manufacturer == 'Supermicro':
+        call_with_output(['/opt/ipmicfg/IPMICFG-Linux.x86_64', '-hostname', asset_tag], 'Failed to set IPMI hostname %(returncode)d:\n%(err)s\n')
+        call_with_output(['/opt/ipmicfg/IPMICFG-Linux.x86_64', '-dhcp', 'on'], 'Failed to enable DHCP %(returncode)d:\n%(err)s\n')
+        password = 'ADMIN'
+        rc, out, err = call_with_output(['/opt/ipmicfg/IPMICFG-Linux.x86_64', '-user', 'list'], 'Failed to list users %(returncode)d:\n%(err)s\n')
+        for line in out.splitlines():
+            fields = [field.strip() for field in line.split('|')]
+            if len(fields) > 1 and fields[1] == 'ADMIN':
+                admin_user_id = fields[0]
+                break
+        call_with_output(['/opt/ipmicfg/IPMICFG-Linux.x86_64', '-user', 'setpwd', admin_user_id, password], 'Failed to set ADMIN password %(returncode)d:\n%(err)s\n')
+
+        json.dump({'success': True, 'failed': False, 'username': 'ADMIN', 'password': password, 'msg': 'Configured IPMI'}, sys.stdout)
+
     else:
         fail_json('Unknown manufacturer: %s' % system_manufacturer)
 

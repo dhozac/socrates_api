@@ -19,13 +19,21 @@ def run(options, steps):
         system_manufacturer = [v for k, v in system.iteritems() if 'Manufacturer' in v['data']][0]['data']['Manufacturer']
         if system_manufacturer.startswith("HP"):
             system_manufacturer = "HP"
+            model = [v for k, v in system.iteritems() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
+            asset_tag = [v for k, v in system.iteritems() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
         elif system_manufacturer.startswith("Dell"):
             system_manufacturer = "Dell"
+            model = [v for k, v in system.iteritems() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
+            asset_tag = [v for k, v in system.iteritems() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
+        elif system_manufacturer.startswith("Supermicro"):
+            system_manufacturer = "Supermicro"
+            baseboard = dmidecode.baseboard()
+            model = [v for k, v in system.iteritems() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
+            if model in ('Super Server', 'To be filled by O.E.M.'):
+                model = [v for k, v in baseboard.iteritems() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
+            asset_tag = [v for k, v in baseboard.iteritems() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
         else:
             raise Exception("Unknown")
-
-        model = [v for k, v in system.iteritems() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
-        asset_tag = [v for k, v in system.iteritems() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
     except:
         system_manufacturer = "Unknown"
         model = "Unknown"
@@ -38,14 +46,17 @@ def run(options, steps):
         security_qs['nonce'] = options.nonce
 
     while True:
-        configuration_file = "/tmp/sot.conf"
-        response = requests.get("%sconfig/%s" % (options.url, asset_tag), params=security_qs, verify=False, headers={"Accept": "application/json"})
-        if response.status_code == 200:
+        try:
+            response = requests.get("%sconfig/%s" % (options.url, asset_tag), params=security_qs, verify=False, headers={"Accept": "application/json"})
+        except:
+            response = None
+        if response is not None and response.status_code == 200:
             break
         else:
             time.sleep(5)
 
     configuration = response.text
+    configuration_file = "/tmp/sot.conf"
     with open(configuration_file, 'w') as f:
         f.write(configuration)
 
@@ -54,11 +65,11 @@ def run(options, steps):
         data = None
         if step == 'reboot':
             subprocess.call(["/sbin/shutdown", "-r", "+1"])
-            data = 'rebooting'
+            data = {'msg': 'rebooting'}
             ret = 1
         elif step == 'poweroff':
             subprocess.call(["/sbin/shutdown", "-h", "+1"])
-            data = 'powering off'
+            data = {'msg': 'powering off'}
             ret = 1
         else:
             p = subprocess.Popen([os.path.join(options.path, step), system_manufacturer, model, asset_tag, configuration_file], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -86,8 +97,7 @@ def main(args=sys.argv[1:]):
         with daemon.DaemonContext(stderr=open("/var/log/intake-controller.log", "w+")):
             run(options, args)
     else:
-        with open("/var/log/intake-controller.log", "w+") as sys.stderr:
-            run(options, args)
+        run(options, args)
 
 if __name__ == "__main__":
     main()

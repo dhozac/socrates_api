@@ -31,15 +31,31 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
     dmidecode_rc, dmidecode_out, dmidecode_err = call_with_output(["dmidecode", "--dump-bin", "/tmp/dmidecode"], 'Failed to run dmidecode with %(returncode)d:\n%(err)s')
     dmidecode = base64.b64encode(open("/tmp/dmidecode", "rb").read())
 
+    subprocess.call(["modprobe", "ipmi_devintf"])
+    time.sleep(3)
+
+    ipmicfg = {}
     if system_manufacturer == "Dell":
         controllers = dell_disks()
     elif system_manufacturer == "HP":
         controllers = hp_disks()
+    elif system_manufacturer == "Supermicro":
+        controllers = generic_disks()
+        ipmicfg_fru_rc, ipmicfg_fru_out, ipmicfg_fru_err = call_with_output(["/opt/ipmicfg/IPMICFG-Linux.x86_64", "-fru", "list"], 'Failed to run ipmicfg -fru list with %(returncode)d:\n%(err)s')
+        ipmicfg_nodeid_rc, ipmicfg_nodeid_out, ipmicfg_nodeid_err = call_with_output(["/opt/ipmicfg/IPMICFG-Linux.x86_64", "-tp", "nodeid"], 'Failed to run ipmicfg -tp nodeid with %(returncode)d:\n%(err)s', success=[0, 13])
+        ipmicfg_tp_info_rc, ipmicfg_tp_info_out, ipmicfg_tp_info_err = call_with_output(["/opt/ipmicfg/IPMICFG-Linux.x86_64", "-tp", "info"], 'Failed to run ipmicfg -tp info with %(returncode)d:\n%(err)s', success=[0, 13])
+        ipmicfg = {
+            'fru': dict([(k.strip(), v.strip()) for k, v in [line.split("=", 1) for line in ipmicfg_fru_out.splitlines()]]),
+        }
+        if ipmicfg_nodeid_rc == 0:
+            ipmicfg['nodeid'] = ipmicfg_nodeid_out.strip()
+        if ipmicfg_tp_info_rc == 0:
+            ipmicfg['tp_info'] = ipmicfg_tp_info_out.strip()
+            m = re.search(r'Chassis S/N\s+:\s([^\n]+)\n', ipmicfg['tp_info'], re.DOTALL)
+            if m and m.group(1) != '(Empty)':
+                ipmicfg['chassis'] = m.group(1)
 
     oob = {}
-
-    subprocess.call(["modprobe", "ipmi_devintf"])
-    time.sleep(3)
 
     p = subprocess.Popen(["ipmitool", "mc", "info"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     ipmitool_mc_out, ipmitool_mc_err = p.communicate()
@@ -75,6 +91,7 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
 
     json.dump({
         'success': True,
+        'model': model,
         'failed': False,
         'lshw': lshw_dict,
         'lldp': lldp_out,
@@ -82,6 +99,7 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
         'storage': controllers,
         'by_id_map': by_id_map,
         'oob': oob,
+        'ipmicfg': ipmicfg,
     }, sys.stdout)
 
 if __name__ == "__main__":

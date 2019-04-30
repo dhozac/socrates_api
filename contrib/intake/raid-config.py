@@ -32,6 +32,12 @@ def hp_same_config(old_vdisk, new_vdisks):
         else:
             return None
 
+def generic_same_config(old_vdisk, new_vdisk):
+    return (
+        old_vdisk['raid'] == new_vdisk['raid'] and
+        set(map(lambda x: x['id'], old_vdisk['pdisks'])) == set(map(lambda x: x['id'], new_vdisk['pdisks']))
+    )
+
 def main(system_manufacturer, model, asset_tag, configuration_file):
     configuration = json.load(open(configuration_file, 'r'))
     if 'storage' not in configuration:
@@ -156,6 +162,45 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
                 disk_name = hp_same_config(vdisk, configuration['storage'])
                 if disk_name and disk_name not in result['vdisks_by_id']:
                     result['vdisks_by_id'][disk_name] = vdisk['DiskName']
+
+        json.dump(result, sys.stdout)
+
+    elif system_manufacturer == 'Supermicro':
+        current_disks = generic_disks()
+        result = {'success': True, 'failed': False, 'vdisks_removed': [], 'vdisks_created': [], 'vdisks_by_id': {}}
+
+        good_vdisks = []
+        for controller in current_disks:
+            for vdisk in controller['vdisks']:
+                if vdisk['name'] not in configuration['storage'] or not generic_same_config(vdisk, configuration['storage'][vdisk['name']]):
+                    rc, out, err = call_with_output(["/opt/MegaRAID/storcli/storcli64", "/c%s/v%s" % (controller['id'], vdisk['id'].split("/")[1]), "del", "force"], "Failed to delete volume %(returncode)d:\n%(out)s\n%(err)s")
+                    open("/tmp/log", "a").write(out)
+                    open("/tmp/log", "a").write(err)
+                    result['vdisks_removed'].append(vdisk)
+                else:
+                    good_vdisks.append(vdisk['name'])
+                    result['vdisks_by_id'][vdisk['name']] = vdisk['by_id']
+
+        for disk in sorted(configuration['storage'].iteritems(), key=lambda v: 0 if v[0] == 'os' else 1):
+            disk_name, disk = disk
+            if disk_name in good_vdisks:
+                continue
+            controller = [controller for controller in current_disks if controller['id'] == disk['controller_id']][0]
+            if controller['type'] == 'storcli':
+                call_with_output(["/opt/MegaRAID/storcli/storcli64", "/c%s" % controller['id'], "add", "vd", "type=%s" % disk['raid'].replace("RAID-", "r"), "name=%s" % disk_name, "drives=%s" % ",".join(map(lambda x: x['id'], disk['pdisks']))], "Failed to create VD %(returncode)d:\n%(out)s\n%(err)s")
+                rc, out, err = call_with_output(["/opt/MegaRAID/storcli/storcli64", "/c%s" % controller['id'], "show", "J"], "Failed to list drives %(returncode)d:\n%(out)s\n%(err)s")
+                data = json.loads(out)
+                for vd in data['Controllers'][0]['Response Data']['VD LIST']:
+                    if vd['Name'] == disk_name:
+                        rc, out, err = call_with_output(["/opt/MegaRAID/storcli/storcli64", "/c%s/v%s" % (controller['id'], vd['DG/VD'].split("/")[1]), "show", "all", "J"], "Failed to get name of drive %(returncode)d:\n%(out)s\n%(err)s")
+                        data = json.loads(out)
+                        result['vdisks_by_id'][disk_name] = find_by_id_symlink(data['Controllers'][0]['Response Data']['VD%s Properties' % vd['DG/VD'].split("/")[1]]['OS Drive Name'].replace("/dev/", ""))
+                        break
+            elif controller['type'] == 'direct':
+                result['vdisks_by_id'][disk_name] = 'disk/by-id/md-name-%s' % disk_name
+            result['vdisks_created'].append(disk_name)
+
+        result['vdisks_unchanged'] = good_vdisks
 
         json.dump(result, sys.stdout)
 

@@ -1,6 +1,9 @@
 [Unit]
 Description=Brings up a network interface
+Before=network-online.target
 Before=network.target
+After=network-pre.target
+Wants=network.target
 
 [Service]
 Type=forking
