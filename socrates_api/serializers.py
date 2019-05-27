@@ -357,7 +357,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
         if self.instance is not None and username is not None:
             if self.instance.get('maintenance', False) and data.get('provisioning', False):
                 raise serializers.ValidationError("cannot provision asset while maintenance is set to True")
-            if self.instance.get('provisioning', False) and 'provisioning' not in data:
+            if self.instance.get('provisioning', False) and not data.get('provisioning', True):
                 raise serializers.ValidationError("cannot update asset until provisioning completes")
             if self.instance.get('decommissioning', False) and 'decommissioning' not in data:
                 raise serializers.ValidationError("cannot update asset until decommission completes")
