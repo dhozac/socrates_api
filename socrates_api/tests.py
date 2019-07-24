@@ -1079,6 +1079,88 @@ class APITests(BaseTests):
                 kwargs={'slug': 'service1'}), HTTP_AUTHORIZATION=lauth)
         self.assertResponse(response, 204)
 
+    def test_load_balancer_uniqueness(self):
+        user, auth = self.create_basic_objects()
+        self.create_lb_objects(auth)
+        luser, lauth = self.create_user('luser', 'testing')
+        group = Group.objects.get(name='group')
+        luser.groups.add(group)
+
+        if SOCRATES_IPAM == 'socrates_api.ipam.BonkIPAM':
+            response = self.client.post(reverse('bonk:prefix_allocate', kwargs={
+                        'vrf': 0,
+                        'network': '10.0.0.0',
+                        'length': 24,
+                    }),
+                data=json.dumps({
+                    'name': 'lb-service1.domain',
+                }), content_type="application/json", HTTP_AUTHORIZATION=auth)
+            self.assertResponse(response, 201)
+            ip1 = json.loads(response.content)['ip']
+            response = self.client.post(reverse('bonk:prefix_allocate', kwargs={
+                        'vrf': 0,
+                        'network': '10.0.0.0',
+                        'length': 24,
+                    }),
+                data=json.dumps({
+                    'name': 'lb-service2.domain',
+                }), content_type="application/json", HTTP_AUTHORIZATION=auth)
+            self.assertResponse(response, 201)
+            ip2 = json.loads(response.content)['ip']
+
+        response = self.client.post(reverse('socrates_api:loadbalancer_list'), data=json.dumps({
+                'cluster': 'lbcluster',
+                'name': "service1",
+                'members': [{'name': 'lb-server1.domain', 'port': 443}],
+                'ip': ip1,
+                'protocol': 'tcp',
+                'port': 443,
+            }), content_type="application/json", HTTP_AUTHORIZATION=auth)
+        self.assertResponse(response, 201)
+
+        response = self.client.post(reverse('socrates_api:loadbalancer_list'), data=json.dumps({
+                'cluster': 'lbcluster',
+                'name': "service2",
+                'members': [{'name': 'lb-server1.domain', 'port': 443}],
+                'ip': ip1,
+                'protocol': 'tcp',
+                'port': 443,
+            }), content_type="application/json", HTTP_AUTHORIZATION=auth)
+        self.assertResponse(response, 400)
+
+        response = self.client.post(reverse('socrates_api:loadbalancer_list'), data=json.dumps({
+                'cluster': 'lbcluster',
+                'name': "service2",
+                'members': [{'name': 'lb-server1.domain', 'port': 443}],
+                'ip': ip2,
+                'protocol': 'http',
+                'port': 443,
+                'endpoints': ['https://lb-target.domain/path'],
+            }), content_type="application/json", HTTP_AUTHORIZATION=auth)
+        self.assertResponse(response, 201)
+
+        response = self.client.post(reverse('socrates_api:loadbalancer_list'), data=json.dumps({
+                'cluster': 'lbcluster',
+                'name': "service3",
+                'members': [{'name': 'lb-server1.domain', 'port': 443}],
+                'ip': ip2,
+                'protocol': 'http',
+                'port': 443,
+                'endpoints': ['https://lb-target.domain/path2'],
+            }), content_type="application/json", HTTP_AUTHORIZATION=auth)
+        self.assertResponse(response, 201)
+
+        response = self.client.post(reverse('socrates_api:loadbalancer_list'), data=json.dumps({
+                'cluster': 'lbcluster',
+                'name': "service4",
+                'members': [{'name': 'lb-server1.domain', 'port': 443}],
+                'ip': ip2,
+                'protocol': 'http',
+                'port': 443,
+                'endpoints': ['https://lb-target.domain/path2'],
+            }), content_type="application/json", HTTP_AUTHORIZATION=auth)
+        self.assertResponse(response, 400)
+
     def test_firewall_ruleset(self):
         user, auth = self.create_basic_objects()
 

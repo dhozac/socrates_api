@@ -947,6 +947,7 @@ LOAD_BALANCING_METHODS = [
     "l3_addr", "weighted_least_connection_member",
     "weighted_least_connection_node_address", "ratio_session",
     "ratio_least_connection_member", "ratio_least_connection_node_address",
+    "first",
 ]
 
 class LoadBalancerMemberSerializer(serializers.Serializer):
@@ -1006,9 +1007,10 @@ class LoadBalancerSerializer(HistorySerializerMixin):
     cluster = serializers.CharField(required=True)
     name = serializers.CharField(required=True)
     members = serializers.ListField(child=LoadBalancerMemberSerializer(), required=True)
-    ip = serializers.IPAddressField(required=True)
-    protocol = serializers.ChoiceField(choices=['tcp', 'udp'], required=True)
-    port = serializers.IntegerField(min_value=1, max_value=65535, required=True)
+    protocol = serializers.ChoiceField(choices=['http', 'tcp', 'udp'], required=True)
+    ip = serializers.IPAddressField(required=False)
+    port = serializers.IntegerField(min_value=1, max_value=65535, required=False)
+    endpoints = serializers.ListField(child=serializers.URLField(), required=False)
     profiles = serializers.ListField(child=serializers.CharField(), required=False)
     monitors = serializers.ListField(child=serializers.CharField(), required=False)
     irules = serializers.ListField(child=serializers.CharField(validators=[validate_irule_name]), required=False)
@@ -1023,11 +1025,9 @@ class LoadBalancerSerializer(HistorySerializerMixin):
         unique = [
             'name'
         ]
-        unique_together = [
-            ('ip', 'protocol', 'port'),
-        ]
         indices = [
             ('ip_protocol_port', (r.row['ip'], r.row['protocol'], r.row['port'])),
+            ('cluster_endpoint', lambda lb: lb['endpoints'].map(lambda ep: [lb['cluster'], ep]), {'multi': True}),
             ('permissions_read', r.row['permissions']['read'], {'multi': True}),
             ('permissions_create', r.row['permissions']['create'], {'multi': True}),
             ('permissions_write', r.row['permissions']['write'], {'multi': True}),
@@ -1048,6 +1048,24 @@ class LoadBalancerSerializer(HistorySerializerMixin):
         except Exception as e:
             raise serializers.ValidationError("unable to find reservation for service IP: %s" % str(e))
         return value
+
+    def validate(self, data):
+        if data.get('protocol', self.instance.get('protocol', None) if self.instance is not None else None) == 'http':
+            cluster = data.get('cluster', self.instance.get('cluster', None) if self.instance is not None else None)
+            endpoints = [[cluster, ep] for ep in data.get('endpoints', self.instance.get('endpoints', None) if self.instance is not None else None)]
+            query = r.table(self.Meta.table_name).get_all(*endpoints, index='cluster_endpoint')
+            msg = "combination of cluster, protocol, and endpoints is not unique"
+        else:
+            destination = [data.get(field, self.instance.get(field, None) if self.instance is not None else None) for field in ('ip', 'protocol', 'port')]
+            query = r.table(self.Meta.table_name).get_all(destination, index='ip_protocol_port')
+            msg = "combination of ip, protocol, and port is not unique"
+
+        if self.instance is not None:
+            query = query.filter(r.row[self.Meta.pk_field] != self.instance[self.Meta.pk_field])
+        matched = query.count().run(self.conn)
+        if matched > 0:
+            raise serializers.ValidationError(msg)
+        return data
 
     def create(self, data):
         from socrates_api.tasks import add_load_balancer
