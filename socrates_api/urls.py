@@ -13,10 +13,12 @@ Including another URLconf
     1. Add an import:  from blog import urls as blog_urls
     2. Add a URL to urlpatterns:  url(r'^blog/', include(blog_urls))
 """
+from __future__ import absolute_import
 from django.conf.urls import include, url
 from socrates_api.views import *
 from django.views.generic.base import RedirectView
 
+app_name = 'socrates_api'
 urlpatterns = [
     url(r'^boot/(?P<slug>[A-Za-z0-9 -]+)$', IPXERouterView.as_view(), name='ipxe_router'),
     url(r'^config/(?P<slug>[A-Za-z0-9 -]+)$', IntakeConfigView.as_view(), name='intake_config'),

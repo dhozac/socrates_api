@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import
+from __future__ import division
 import time
 import jsonpath_rw_ext
 import datetime
@@ -47,7 +49,7 @@ def dict_merge(dict1, dict2):
 
 def dict_differences(new, old):
     ret = {}
-    for key, val in new.iteritems():
+    for key, val in new.items():
         if key not in old:
             ret[key] = val
             continue
@@ -334,10 +336,10 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
         return value
 
     def validate_created(self, value):
-        if isinstance(value, (unicode, str)):
+        if isinstance(value, str):
             value = datetime.datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
         if self.instance is not None and 'created' in self.instance:
-            if isinstance(self.instance['created'], (unicode, str)):
+            if isinstance(self.instance['created'], str):
                 self.instance['created'] = datetime.datetime.strptime(self.instance['created'][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
             if value.strftime("%Y-%m-%dT%H:%M:%S") != self.instance['created'].strftime("%Y-%m-%dT%H:%M:%S"):
                 raise serializers.ValidationError("time travelling denied")
@@ -459,7 +461,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
                             raise serializers.ValidationError("cidr='%s' is not allocatable: %s" % (vlan['cidr'], str(e)))
 
             if new_asset['asset_type'] == 'vm':
-                for name, disk in new_asset['provision']['storage'].iteritems():
+                for name, disk in new_asset['provision']['storage'].items():
                     for field in ('class', 'by_id', 'size'):
                         if field not in disk:
                             raise serializers.ValidationError("provision__storage__%s__%s is required" % (name, field))
@@ -468,7 +470,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
                         disk['class'] not in self.parent_asset['storage'][0]['datastores']):
                         raise serializers.ValidationError("provision__storage__%s__class='%s' is not a valid choice (%s)" %
                             (name, disk['class'], ", ".join(self.parent_asset['storage'][0]['datastores'].keys())))
-                    if not isinstance(disk['size'], (int, long)):
+                    if not isinstance(disk['size'], int):
                         raise serializers.ValidationError("provision__storage__%s__size=%r is not an integer" % (name, disk['size']))
 
                 if 'owner' in new_asset and self.parent_asset['owner'] != new_asset['owner']:
@@ -494,7 +496,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
                         for key in ('cpus', 'ram'):
                             if key not in new_asset['provision']:
                                 raise serializers.ValidationError("provision__%s is required" % key)
-                            if not isinstance(new_asset['provision'][key], (int, long)):
+                            if not isinstance(new_asset['provision'][key], int):
                                 raise serializers.ValidationError("provision__%s is not an integer" % key)
 
                         vm_disk = sum([x['size'] for x in new_asset['provision']['storage'].values()])
@@ -522,7 +524,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
 
             elif new_asset['asset_type'] == 'server':
                 pdisks = dict([(controller['id'], [pdisk['id'] for pdisk in controller['pdisks']]) for controller in new_asset['storage']])
-                for name, disk in new_asset['provision']['storage'].iteritems():
+                for name, disk in new_asset['provision']['storage'].items():
                     for field in ('raid', 'pdisks'):
                         if field not in disk:
                              raise serializers.ValidationError("provision__storage__%s__%s is required" % (name, field))
@@ -686,12 +688,12 @@ class FirewallRuleSetSerializer(HistorySerializerMixin):
                 lambda n: n.has_fields('ruleset') & (r.expr(all_rulesets).contains(n['ruleset']))):
             for domain in network.get('domains', {}).keys():
                 try:
-                    asset = AssetSerializer.filter({
+                    asset = next(AssetSerializer.filter({
                         'state': 'in-use',
                         'asset_type': 'network',
                         'asset_subtype': 'firewall',
                         'network': {'device': domain},
-                    }).next()
+                    }))
                     break
                 except:
                     pass
@@ -753,12 +755,12 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
         if 'ruleset' in validated_data and instance.get('ruleset', None) != network['ruleset']:
             for domain in network.get('domains', {}).keys():
                 try:
-                    asset = AssetSerializer.filter({
+                    asset = next(AssetSerializer.filter({
                         'state': 'in-use',
                         'asset_type': 'network',
                         'asset_subtype': 'firewall',
                         'network': {'device': domain},
-                    }).next()
+                    }))
                 except:
                     pass
                 else:

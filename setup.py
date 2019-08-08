@@ -5,7 +5,7 @@ import os
 import re
 
 setup(name='socrates_api',
-      version='1.1.0',
+      version='1.2.0',
       license='Apache Software License',
       description='Source of Truth for hardware, virtual machines, and networks',
       author='Klarna Bank AB',
@@ -13,7 +13,7 @@ setup(name='socrates_api',
       url='https://github.com/dhozac/socrates_api',
       packages=['socrates_api', 'socrates_api.migrations', 'socrates_api.templatetags'],
       install_requires=[
-          'Django>=1.11,<2.0',
+          'Django',
           'rethinkdb',
           'celery',
           'djangorestframework',

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import
 import logging
 from django.contrib.auth import get_backends
 from rest_framework.authentication import BasicAuthentication

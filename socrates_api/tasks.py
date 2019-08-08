@@ -25,9 +25,13 @@ import socket
 import subprocess
 import time
 import traceback
-import urlparse
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
 import copy
 import datetime
+from functools import reduce
 import pytz
 import deepdiff
 from celery import shared_task, chord, group
@@ -89,13 +93,13 @@ jsonpath_rw_ext._filter.OPERATOR_MAP['^='] = lambda x, y: x.startswith(y)
 @shared_task
 def extract_asset_from_raw(service_tag, final_step=False):
     conn = get_connection()
-    raw_asset = r.table("assets_raw").get_all(service_tag, index="service_tag").run(conn).next()
+    raw_asset = next(r.table("assets_raw").get_all(service_tag, index="service_tag").run(conn))
     data = {}
-    data['cpu'] = map(lambda x: x.value, jsonpath_rw_ext.parse('$..children[?class="processor"].version').find(raw_asset))
+    data['cpu'] = [x.value for x in jsonpath_rw_ext.parse('$..children[?class="processor"].version').find(raw_asset)]
     try:
         memory = jsonpath_rw_ext.parse('$..children[?id="memory"]').find(raw_asset)[0].value
     except IndexError:
-        memories = filter(lambda x: x['id'].startswith("memory"), map(lambda x: x.value, jsonpath_rw_ext.parse('$..children[?class="memory"]').find(raw_asset)))
+        memories = [x.value for x in jsonpath_rw_ext.parse('$..children[?class="memory"]').find(raw_asset) if x.value['id'].startswith("memory")]
         memory = {'children': []}
         for m in memories:
             memory['children'].extend(m.get('children', []))
@@ -117,12 +121,13 @@ def extract_asset_from_raw(service_tag, final_step=False):
     if system['vendor'] != 'Supermicro' and system['configuration']['chassis'] == 'blade':
         data['asset_subtype'] = 'blade'
         dmidata = NamedTemporaryFile()
-        dmidata.write(base64.b64decode(raw_asset['intake']['dmidecode']))
+        dmidata.write(base64.b64decode(raw_asset['intake']['dmidecode'].encode("ascii")))
         dmidata.flush()
         if data['vendor'] == 'HP':
             p = subprocess.Popen(["dmidecode", "--from-dump", dmidata.name, "-t", "204", "-q"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = p.communicate()
             if p.returncode == 0:
+                stdout = stdout.decode("utf-8")
                 parent_m = hp_enclosure_serial.search(stdout)
                 bay_m = hp_enclosure_bay.search(stdout)
                 if parent_m:
@@ -135,6 +140,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
             p = subprocess.Popen(["dmidecode", "--from-dump", dmidata.name, "-t", "2", "-t", "3", "-q"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = p.communicate()
             if p.returncode == 0:
+                stdout = stdout.decode("utf-8")
                 parent_m = dell_enclosure_serial.search(stdout)
                 bay_m = dell_enclosure_bay.search(stdout)
                 if parent_m:
@@ -179,7 +185,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
         system_m = lldp_remote_system.search(raw_asset['intake']['lldp'].get(nic['name'], ""))
         if system_m is not None:
             try:
-                switch_asset = AssetSerializer.filter({'switch': {'domain': system_m.group(1)}}).next()
+                switch_asset = next(AssetSerializer.filter({'switch': {'domain': system_m.group(1)}}))
             except r.errors.ReqlCursorEmpty:
                 logger.warning("switch domain %s is unknown", system_m.group(1))
             else:
@@ -283,7 +289,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
                     continue
                 if not isinstance(device['logicalname'], list):
                     device['logicalname'] = [device['logicalname']]
-                by_id = ["disk/by-id/" + by_id for by_id, node in raw_asset['intake']['by_id_map'].iteritems() if node in device['logicalname'] and (by_id.startswith("scsi-") or by_id.startswith("ata-"))]
+                by_id = ["disk/by-id/" + by_id for by_id, node in raw_asset['intake']['by_id_map'].items() if node in device['logicalname'] and (by_id.startswith("scsi-") or by_id.startswith("ata-"))]
                 if len(by_id) == 0:
                     continue
                 by_id = by_id[0]
@@ -312,7 +318,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
         instance = None
 
     if 'raid-config' in raw_asset and raw_asset['raid-config'].get('success', False) and raw_asset['raid-config']['timestamp'] > (time.time() - 3600):
-        for vdisk, by_id in raw_asset['raid-config']['vdisks_by_id'].iteritems():
+        for vdisk, by_id in raw_asset['raid-config']['vdisks_by_id'].items():
             if vdisk in instance['provision']['storage'] and 'by_id' not in instance['provision']['storage'][vdisk]:
                 if 'provision' not in data:
                     data['provision'] = {}
@@ -323,7 +329,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
                 data['provision']['storage'][vdisk]['by_id'] = by_id
 
     dmidata = NamedTemporaryFile()
-    dmidata.write(base64.b64decode(raw_asset['intake']['dmidecode']))
+    dmidata.write(base64.b64decode(raw_asset['intake']['dmidecode'].encode("ascii")))
     dmidata.flush()
     p = subprocess.Popen(["dmidecode", "--from-dump", dmidata.name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     dmidecode_out, dmidecode_err = p.communicate()
@@ -334,7 +340,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
     if dmidecode_rc == 0:
         designation = None
         address = None
-        for line in dmidecode_out.splitlines():
+        for line in dmidecode_out.decode("utf-8").splitlines():
             if line.startswith("Handle 0x"):
                 if designation is not None and address is not None:
                     slots[address] = designation
@@ -441,7 +447,7 @@ def extract_warranty_from_raw(asset):
 
 def _extract_dell_warranty_from_raw(service_tag):
     conn = get_connection()
-    raw_asset = r.table("assets_raw").get_all(service_tag, index="service_tag").run(conn).next()
+    raw_asset = next(r.table("assets_raw").get_all(service_tag, index="service_tag").run(conn))
     warranty = {}
     if 'warranty' in raw_asset.keys():
         warranty = raw_asset['warranty']
@@ -495,7 +501,7 @@ def _call_dell_warranty_api(service_tags):
             time.sleep(5)
     if len(batch) > 0:
         result.update(_send_dell_warranty_api_batch(batch))
-    for service_tag, warranty in result.iteritems():
+    for service_tag, warranty in result.items():
         status = r.table("assets_raw").get_all(service_tag, index="service_tag").update({"warranty": warranty}).run(get_connection())
         if max(status.values()) == 0:
             status = r.table('assets_raw').insert({'service_tag': service_tag, 'warranty': warranty}).run(get_connection())
@@ -702,7 +708,7 @@ def ipmi_shutdown(self, asset):
     elif asset['asset_type'] == 'vm':
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
-            url = urlparse.urlparse(parent_asset['url'])
+            url = urlparse(parent_asset['url'])
             run_playbook(asset, url.path.lstrip("/") + "shutdown.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
         elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
@@ -730,7 +736,7 @@ def ipmi_poweron(self, asset):
     elif asset['asset_type'] == 'vm':
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
-            url = urlparse.urlparse(parent_asset['url'])
+            url = urlparse(parent_asset['url'])
             run_playbook(asset, url.path.lstrip("/") + "poweron.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
         elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
@@ -762,7 +768,7 @@ def ipmi_reboot(self, asset):
     elif asset['asset_type'] == 'vm':
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
-            url = urlparse.urlparse(parent_asset['url'])
+            url = urlparse(parent_asset['url'])
             run_playbook(asset, url.path.lstrip("/") + "reboot.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
         elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
@@ -818,7 +824,7 @@ def ipmi_power_state(self, asset):
     elif asset['asset_type'] == 'vm':
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
-            url = urlparse.urlparse(parent_asset['url'])
+            url = urlparse(parent_asset['url'])
             return run_playbook_with_output(asset, url.path.lstrip("/") + "power-state.yml", extra_vars={'parent_asset': parent_asset, 'url': url})['result']
         elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
@@ -981,8 +987,8 @@ def reconfigure_network_port(asset):
     if asset['asset_type'] in ('server', 'network', 'storage'):
         domains = set(map(lambda x: x.value, jsonpath_rw_ext.parse('$.nics[*].remote.domain').find(asset)))
         for domain in domains:
-            switch_asset = AssetSerializer.filter(switch={'domain': domain}).next()
-            url = urlparse.urlparse(switch_asset['url'])
+            switch_asset = next(AssetSerializer.filter(switch={'domain': domain}))
+            url = urlparse(switch_asset['url'])
             if url.scheme == 'ansible':
                 reconfigure_network_port_ansible(switch_asset, url, asset)
             else:
@@ -990,7 +996,7 @@ def reconfigure_network_port(asset):
     elif asset['asset_type'] == 'vm':
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
-            url = urlparse.urlparse(parent_asset['url'])
+            url = urlparse(parent_asset['url'])
             reconfigure_network_port_vm_ansible(parent_asset, url, asset)
         elif asset['asset_subtype'] == 'vmware':
             asset = reconfigure_network_port_vmware(asset)
@@ -1024,7 +1030,7 @@ def run_playbook(asset, playbook, **kwargs):
     else:
         template.close()
 
-    extra_vars_temp = NamedTemporaryFile(delete=False, suffix='.json')
+    extra_vars_temp = NamedTemporaryFile(mode='w+', delete=False, suffix='.json')
     json.dump(extra_vars, extra_vars_temp, cls=JSONEncoder)
     extra_vars_temp.close()
 
@@ -1048,10 +1054,12 @@ def run_playbook(asset, playbook, **kwargs):
     prefix = "%s: %s: " % (asset['service_tag'], playbook)
     for line in stdout.splitlines():
         if line:
+            line = line.decode("utf-8")
             line = ansible_password_hider.sub("password=HIDDEN", line)
             logger.info(prefix + line)
     for line in stderr.splitlines():
         if line:
+            line = line.decode("utf-8")
             line = ansible_password_hider.sub("password=HIDDEN", line)
             logger.error(prefix + line)
 
@@ -1114,7 +1122,7 @@ def add_to_dns(asset, old_asset=None):
         elif asset['provision']['hostname'] != old_asset['provision']['hostname']:
             network = NetworkSerializer.get_by_asset_vlan(asset, asset['provision']['vlan'])
             ipam.ip_address_update(network, asset, asset['provision']['hostname'], asset['provision']['vlan']['ip'])
-            for cidr, vlan in now_vlans.iteritems():
+            for cidr, vlan in now_vlans.items():
                 network = NetworkSerializer.get_by_asset_vlan(asset, vlan)
                 shortname, domain = asset['provision']['hostname'].split(".", 1)
                 hostname = "%s%s.%s" % (shortname, vlan['suffix'], domain)
@@ -1173,8 +1181,8 @@ def add_to_dns(asset, old_asset=None):
 def remove_ip_from_asset(asset):
     new_asset = copy.deepcopy(asset)
     if 'provision' in asset and 'vlan' in asset['provision'] and 'ip' in asset['provision']['vlan']:
-        new_asset['provision']['vlan'] = dict([(key, val) for key, val in asset['provision']['vlan'].iteritems() if key != "ip"])
-        new_asset['provision']['vlans'] = [dict([(key, val) for key, val in vlan.iteritems() if key != "ip"]) for vlan in asset['provision'].get('vlans', [])]
+        new_asset['provision']['vlan'] = dict([(key, val) for key, val in asset['provision']['vlan'].items() if key != "ip"])
+        new_asset['provision']['vlans'] = [dict([(key, val) for key, val in vlan.items() if key != "ip"]) for vlan in asset['provision'].get('vlans', [])]
     new_asset['log'] = 'Removed from DNS'
     return asset_replace(asset, new_asset)
 
@@ -1208,7 +1216,7 @@ def remove_vm_service_tags(asset, present_service_tags):
         asset_update(asset, update)
 
 def connect_hypervisor_vmware(parent_asset):
-    url = urlparse.urlparse(parent_asset['url'])
+    url = urlparse(parent_asset['url'])
     sslcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
     if hasattr(settings, 'SOCRATES_VMWARE_CERT_VERIFY') and settings.SOCRATES_VMWARE_CERT_VERIFY:
         sslcontext.verify_mode = ssl.CERT_REQUIRED
@@ -1217,8 +1225,8 @@ def connect_hypervisor_vmware(parent_asset):
     si = pyVim.connect.SmartConnect(host=url.netloc, user=settings.SOCRATES_VMWARE_USERNAME, pwd=settings.SOCRATES_VMWARE_PASSWORD, sslContext=sslcontext)
     vcenter = si.RetrieveContent()
     _, datacenter_name, cluster_name = url.path.split("/")
-    datacenter = filter(lambda x: x.name == datacenter_name, vcenter.rootFolder.childEntity)[0]
-    cluster = filter(lambda x: x.name == cluster_name, datacenter.hostFolder.childEntity)[0]
+    datacenter = [x for x in vcenter.rootFolder.childEntity if x.name == datacenter_name][0]
+    cluster = [x for x in datacenter.hostFolder.childEntity if x.name == cluster_name][0]
     return si, vcenter, datacenter, cluster
 
 def wait_for_task_completion_vmware(tasks):
@@ -1256,7 +1264,7 @@ def find_network_by_vlan_vmware(cluster, network_serializer):
                     )
                 )
         elif isinstance(possible_network, pyVmomi.vim.Network):
-            if possible_network.name not in pg_lookup.keys():
+            if possible_network.name not in pg_lookup:
                 continue
             if pg_lookup[possible_network.name] == network_serializer['asset_domain']['vlan_id'] or possible_network.name == network_serializer['asset_domain']['name']:
                 return possible_network, pyVmomi.vim.VirtualEthernetCardNetworkBackingInfo(
@@ -1308,7 +1316,7 @@ def extract_asset_vmware(parent_asset, asset, cluster, vm, disk_map={}):
     for disk in vm.config.hardware.device:
         if not isinstance(disk, pyVmomi.vim.vm.device.VirtualDisk):
             continue
-        for data_class, volumes in parent_asset['storage'][0]['datastores'].iteritems():
+        for data_class, volumes in parent_asset['storage'][0]['datastores'].items():
             if disk.backing.datastore.name in volumes:
                 break
         else:
@@ -1363,7 +1371,7 @@ def collect_vms_vmware(asset):
     pyVim.connect.Disconnect(si)
 
 def new_virtual_disk_vmware(asset, parent_asset, datacenter, cluster, disk_id, disk_name, disk, controller_key=5000):
-    datastores = sorted(filter(lambda x: x.name in parent_asset['storage'][0]['datastores'][disk['class']], cluster.datastore), key=lambda x: x.info.freeSpace - (x.summary.uncommitted if isinstance(x.summary.uncommitted, (int, long)) else 0))
+    datastores = sorted(filter(lambda x: x.name in parent_asset['storage'][0]['datastores'][disk['class']], cluster.datastore), key=lambda x: x.info.freeSpace - (x.summary.uncommitted if isinstance(x.summary.uncommitted, int) else 0))
     datastore = datastores[-1]
     if disk_id >= 7:
         disk_id += 1
@@ -1393,13 +1401,13 @@ def reprovision_vm_vmware(asset, parent_asset):
     for device in vm.config.hardware.device:
         if isinstance(device, pyVmomi.vim.vm.device.VirtualDisk):
             controller_key = device.controllerKey
-            for data_class, volumes in parent_asset['storage'][0]['datastores'].iteritems():
+            for data_class, volumes in parent_asset['storage'][0]['datastores'].items():
                 if device.backing.datastore.name in volumes:
                     break
             else:
                 data_class = None
             capacity = device.capacityInKB << 10 if device.capacityInBytes is None else device.capacityInBytes
-            for name, info in asset['provision']['storage'].iteritems():
+            for name, info in asset['provision']['storage'].items():
                 if 'storage_id' in info and info['storage_id'] == device.backing.uuid:
                     seen_disks.add(name)
                     if abs(capacity - asset['provision']['storage'][name]['size']) > 1024:
@@ -1426,8 +1434,8 @@ def reprovision_vm_vmware(asset, parent_asset):
     # Special case for the simple one of one interface
     if len(seen_networks) == 1 and len(asset['provision'].get('vlans', [])) == 0:
         network_serializer = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=asset['provision']['vlan'])
-        if seen_networks.keys()[0] != network_serializer['asset_name']:
-            device = seen_networks.values()[0]
+        if next(seen_networks.keys()) != network_serializer['asset_name']:
+            device = next(seen_networks.values())
             network, device.backing = find_network_by_vlan_vmware(cluster, network_serializer)
             device_changes.append(pyVmomi.vim.vm.device.VirtualDeviceSpec(
                 operation=pyVmomi.vim.vm.device.VirtualDeviceSpec.Operation.edit,
@@ -1534,7 +1542,7 @@ def provision_vm_vmware(asset, parent_asset):
 
     # Create and add a disk
     disk_map = {}
-    for disk_id, disk in enumerate(sorted(asset['provision']['storage'].iteritems(), key=lambda v: "\x00%s" % v[1].get('by_id', v[0]) if v[0] == 'os' else v[1].get('by_id', v[0]))):
+    for disk_id, disk in enumerate(sorted(asset['provision']['storage'].items(), key=lambda v: "\x00%s" % v[1].get('by_id', v[0]) if v[0] == 'os' else v[1].get('by_id', v[0]))):
         disk_name, disk = disk
         vmspec.deviceChange.append(
             pyVmomi.vim.VirtualDeviceConfigSpec(
@@ -1671,7 +1679,7 @@ def extract_asset_ovirt(parent_asset, asset, api, vm):
     update['storage'] = []
     for disk in vm_service.disk_attachments_service().list(follow='disk'):
         storage_domain = api.follow_link(disk.disk.storage_domains[0]).name
-        for data_class, volumes in parent_asset['storage'][0]['datastores'].iteritems():
+        for data_class, volumes in parent_asset['storage'][0]['datastores'].items():
             if storage_domain in volumes:
                 break
         else:
@@ -1791,7 +1799,7 @@ def provision_vm_ovirt(asset, parent_asset):
         nic_id += 1
 
     storage_domains_service = api.system_service().data_centers_service().data_center_service(datacenter.id).storage_domains_service()
-    for disk_name, disk in asset['provision']['storage'].iteritems():
+    for disk_name, disk in asset['provision']['storage'].items():
         storage_domains = sorted(map(lambda sd: get_storage_domain_ovirt(storage_domains_service, str(sd)), parent_asset['storage'][0]['datastores'][disk['class']]), key=lambda sd: sd.available)
         vm_service.disk_attachments_service().add(ovirtsdk4.types.DiskAttachment(
             active=True,
@@ -1877,7 +1885,7 @@ def remove_network_ovirt(asset, network):
 def provision_vm(asset):
     parent_asset = AssetSerializer.get(service_tag=asset['parent'])
     if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
-        url = urlparse.urlparse(parent_asset['url'])
+        url = urlparse(parent_asset['url'])
         update = run_playbook_with_output(asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
         return asset_update(asset, update)
     elif parent_asset['asset_subtype'] == 'vmware':
@@ -1909,7 +1917,7 @@ def remove_vm_ovirt(asset):
 def remove_vm(asset):
     parent_asset = AssetSerializer.get(service_tag=asset['parent'])
     if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
-        url = urlparse.urlparse(parent_asset['url'])
+        url = urlparse(parent_asset['url'])
         update = run_playbook_with_output(asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
         return asset_update(asset, update)
     elif asset['asset_subtype'] == 'vmware':
@@ -1920,7 +1928,7 @@ def remove_vm(asset):
         return remove_vm_libvirt(asset)
 
 def collect_vms_ansible(asset):
-    url = urlparse.urlparse(asset['url'])
+    url = urlparse(asset['url'])
     vms = run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", extra_vars={'url': url})
     service_tags = set()
     for vm in vms:
@@ -1981,7 +1989,7 @@ def collect_vm_networks_vmware(asset):
                 continue
         else:
             continue
-        if not isinstance(vlan_id, (int, long)):
+        if not isinstance(vlan_id, int):
             continue
         try:
             network_serializer = NetworkSerializer.get_by_domain_id(domain=hypervisor_domain, vlan_id=vlan_id)
@@ -2019,7 +2027,7 @@ def collect_vm_networks(asset):
 @shared_task
 def collect_switch_networks(asset):
     networks = 0
-    url = urlparse.urlparse(asset['url'])
+    url = urlparse(asset['url'])
     if url.scheme == 'ansible':
         siblings = AssetSerializer.filter(lambda switch:
             switch.has_fields('switch') &
@@ -2034,7 +2042,7 @@ def collect_switch_networks(asset):
             (firewall['nics'].map(lambda nic: nic['remote']['domain']).
                 set_intersection(related_switches).count() > 0)
         )
-        firewall_domains = map(lambda x: x['network']['device'], firewalls)
+        firewall_domains = [x['network']['device'] for x in firewalls]
         switch = url.netloc.split("@")[-1]
         for domain in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=switch, extra_vars={'url': url, 'collect': 'switch'}):
             try:
@@ -2066,7 +2074,7 @@ def collect_switch_networks(asset):
 
 def collect_firewall_networks_ansible(asset, url):
     networks = 0
-    hypervisors = map(lambda x: x['service_tag'], AssetSerializer.filter({'asset_type': 'vmcluster', 'state': 'in-use'}))
+    hypervisors = [x['service_tag'] for x in AssetSerializer.filter({'asset_type': 'vmcluster', 'state': 'in-use'})]
     for network in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=url.netloc.split("@")[-1], extra_vars={'url': url, 'collect': 'firewall'}):
         networks += 1
         try:
@@ -2087,7 +2095,7 @@ def collect_firewall_networks_ansible(asset, url):
 def collect_firewall_networks(asset):
     if 'url' not in asset:
         return 0
-    url = urlparse.urlparse(asset['url'])
+    url = urlparse(asset['url'])
     if url.scheme == 'ansible':
         return collect_firewall_networks_ansible(asset, url)
     return 0
@@ -2118,11 +2126,11 @@ def end_maintenance(asset):
 @shared_task
 def remove_hypervisor_from_cluster(asset):
     try:
-        cluster_asset = r.table('assets').filter(
+        cluster_asset = next(r.table('assets').filter(
                 {'asset_type': 'vmcluster'}).filter(lambda x:
                     x['hypervisors'].contains(asset['service_tag'])
-                ).run(get_connection()).next()
-        update_hvlist = filter(lambda x: x != asset['service_tag'], cluster_asset['hypervisors'])
+                ).run(get_connection()))
+        update_hvlist = [x for x in cluster_asset['hypervisors'] if x != asset['service_tag']]
         update = {'log': 'Removed hypervisor',
                   'hypervisors': update_hvlist}
         asset_update(cluster_asset, update)
@@ -2293,7 +2301,7 @@ def extract_asset_libvirt(parent_asset, asset, api, vm, tree=None):
         })
 
     pools = {}
-    for data_class, pool_names in parent_asset['storage'][0]['datastores'].iteritems():
+    for data_class, pool_names in parent_asset['storage'][0]['datastores'].items():
         for pool_name in pool_names:
             pools[pool_name] = data_class
 
@@ -2484,7 +2492,7 @@ def provision_vm_libvirt(asset, parent_asset):
         "--autostart", "--noreboot", "--noautoconsole", "--print-xml"
     ]
 
-    for disk_id, disk in enumerate(sorted(asset['provision']['storage'].iteritems(), key=lambda v: "\x00%s" % v[1].get('by_id', v[0]) if v[0] == 'os' else v[1].get('by_id', v[0]))):
+    for disk_id, disk in enumerate(sorted(asset['provision']['storage'].items(), key=lambda v: "\x00%s" % v[1].get('by_id', v[0]) if v[0] == 'os' else v[1].get('by_id', v[0]))):
         disk_name, disk = disk
         vol = new_virtual_disk_libvirt(asset, parent_asset, api, disk_id, disk_name, disk)
         command.extend([
@@ -2729,7 +2737,7 @@ def add_network(asset, network):
         elif asset['asset_subtype'] == 'libvirt':
             return add_network_libvirt(asset, network)
     elif 'url' in asset:
-        url = urlparse.urlparse(asset['url'])
+        url = urlparse(asset['url'])
         if url.scheme == 'ansible':
             return add_network_ansible(asset, network, url)
 
@@ -2743,7 +2751,7 @@ def remove_network(asset, network):
         elif asset['asset_subtype'] == 'libvirt':
             return remove_network_libvirt(asset, network)
     elif 'url' in asset:
-        url = urlparse.urlparse(asset['url'])
+        url = urlparse(asset['url'])
         if url.scheme == 'ansible':
             return remove_network_ansible(asset, network, url)
 
@@ -2780,7 +2788,7 @@ def firewall_apply(asset, network):
             for k in ['destination_addresses', 'source_addresses']:
                 for ur_address in rule.get(k, []):
                     ur_address['resolved'] = FirewallAddressSerializer(ur_address).resolve()
-    url = urlparse.urlparse(asset['url'])
+    url = urlparse(asset['url'])
     if url.scheme == 'ansible':
         return firewall_apply_ansible(asset, url, network, rules, networks)
     return False
@@ -2794,7 +2802,7 @@ def _firewall_group_manage(group, name):
     for asset in AssetSerializer.filter(r.row.has_fields({'network': {'device': True}, 'url': True})):
         if 'url' not in asset:
             continue
-        url = urlparse.urlparse(asset['url'])
+        url = urlparse(asset['url'])
         if url.scheme == 'ansible':
             _firewall_group_manage_ansible(asset, name, url, group)
 
@@ -2822,7 +2830,7 @@ def _run_load_balancer_playbook(load_balancer, playbook):
     else:
         irules = []
     for subasset in urls.values():
-        url = urlparse.urlparse(subasset['url'])
+        url = urlparse(subasset['url'])
         switch = url.netloc.split("@")[-1]
         run_playbook(subasset, url.path.lstrip("/") + playbook, switch=switch, extra_vars={'load_balancer': load_balancer, 'irules': irules, 'url': url})
 
@@ -2847,8 +2855,8 @@ def remove_from_load_balancers(asset):
     )
     for load_balancer in load_balancers:
         serializer = LoadBalancerSerializer(load_balancer, data={
-            'members': filter(lambda m: m['name'] != asset['provision']['hostname'],
-                load_balancer['members']),
+            'members': [m for m in load_balancer['members']
+                              if m['name'] != asset['provision']['hostname']],
         }, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import
 import os
 import copy
 import json
@@ -27,11 +28,13 @@ from django.contrib.auth.models import Group
 from django.contrib.auth.hashers import make_password
 from socrates_api.models import SocratesUser
 from socrates_api.serializers import AssetSerializer
-import rethinkdb as r
-import gevent
+from rethinkdb import r
 import uuid
 import random
-import urlparse
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
 import hmac
 import hashlib
 
@@ -61,7 +64,7 @@ class FakePyghmiSession(object):
                    SOCRATES_CHANGEFEED_MAX_WAIT=3,
                    SOCRATES_HOSTNAME_PATTERN=r'.*\.domain',
                    SOCRATES_ALIAS_PATTERN=r'.*\.domain',
-                   SOCRATES_NODE_HMAC_KEY='secret',
+                   SOCRATES_NODE_HMAC_KEY=b'secret',
 )
 class BaseTests(TestCase):
     @classmethod
@@ -115,7 +118,7 @@ class BaseTests(TestCase):
                             kwargs['data'] = json.dumps(kwargs['json'])
                         elif 'params' in kwargs:
                             kwargs['data'] = kwargs['params']
-                        url = urlparse.urlparse(url)
+                        url = urlparse(url)
                         return testclient_with_json(getattr(self.testclient, method)(url.path, *args, **kwargs))
                     return invoker
             user, auth = self.create_user(settings.BONK_AUTH[0], settings.BONK_AUTH[1], is_superuser=True)
@@ -146,7 +149,8 @@ class BaseTests(TestCase):
 
     def create_user(self, username='tester', password='testing', email='tester@klarna.com', **kwargs):
         user = SocratesUser.objects.create(username=username, password=make_password(password), email=email, **kwargs)
-        return (user, "Basic %s" % (base64.b64encode("%s:%s" % (username, password))))
+        auth = "Basic %s" % (base64.b64encode(("%s:%s" % (username, password)).encode("ascii")).decode("ascii"))
+        return (user, auth)
 
     def create_basic_objects(self, networks=True):
         user, auth = self.create_user(is_superuser=True, is_staff=True)
@@ -248,7 +252,7 @@ class BaseTests(TestCase):
         return response
 
     def make_node_hmac(self, service_tag, nonce=""):
-        return hmac.HMAC("secret", service_tag + nonce, hashlib.sha256).hexdigest()
+        return hmac.HMAC(settings.SOCRATES_NODE_HMAC_KEY, (service_tag + nonce).encode("ascii"), hashlib.sha256).hexdigest()
 
 class APITests(BaseTests):
     def test_ipxe_router_simple(self):
@@ -306,11 +310,11 @@ class APITests(BaseTests):
         self.assertResponse(response, 200)
         response = self.client.get('/tkickstart/TESTASS')
         self.assertResponse(response, 200)
-        self.assertEqual(response.content, 'kick me up')
+        self.assertEqual(response.content, b'kick me up')
 
         response = self.client.get('/tkickstartcomplete/TESTASS')
         self.assertResponse(response, 200)
-        self.assertEqual(response.content, 'true')
+        self.assertEqual(response.content, b'true')
         obj = r.table('assets').get_all('TESTASS', index='service_tag').nth(0).run(self.conn)
         self.assertEqual(obj['state'], 'in-use')
         self.assertFalse(obj['provisioning'])
@@ -534,7 +538,7 @@ class APITests(BaseTests):
 
         response = self.provision_asset('TESTASS', auth, hostname='test-ipam-validate.domain')
         self.assertResponse(response, 400)
-        self.assertIn('allocatable', response.content)
+        self.assertIn(b'allocatable', response.content)
 
     def test_asset_list_as_manager(self):
         super_user, super_auth = self.create_basic_objects()
@@ -620,7 +624,7 @@ class APITests(BaseTests):
         }
         def vm_with_specifics(**fields):
             v = copy.deepcopy(vm)
-            for field, value in fields.iteritems():
+            for field, value in fields.items():
                 d = v
                 for point in field.split("__")[:-1]:
                     d = d[point]
@@ -742,7 +746,7 @@ class APITests(BaseTests):
         self.assertEqual(data['service_tag'], 'TESTASS')
         response = self.client.get('/tkickstartcomplete/TESTASS')
         self.assertResponse(response, 200)
-        self.assertEqual(response.content, 'true')
+        self.assertEqual(response.content, b'true')
         response = self.client.get('/asset/TESTASS', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 200)
         asset = json.loads(response.content)
@@ -773,7 +777,7 @@ class APITests(BaseTests):
         self.assertEqual(data['service_tag'], 'TESTASS')
         response = self.client.get('/tkickstartcomplete/TESTASS')
         self.assertResponse(response, 200)
-        self.assertEqual(response.content, 'true')
+        self.assertEqual(response.content, b'true')
         response = self.client.get('/asset/TESTASS', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 200)
         asset = json.loads(response.content)
@@ -809,7 +813,7 @@ class APITests(BaseTests):
         self.assertEqual(data['service_tag'], 'TESTASS')
         response = self.client.get('/tkickstartcomplete/TESTASS')
         self.assertResponse(response, 200)
-        self.assertEqual(response.content, 'true')
+        self.assertEqual(response.content, b'true')
         response = self.client.get('/asset/TESTASS', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 200)
         asset = json.loads(response.content)
@@ -839,8 +843,8 @@ class APITests(BaseTests):
         if settings.SOCRATES_IPAM == 'socrates_api.ipam.BonkIPAM':
             response = self.client.get(reverse('bonk:record_list'), HTTP_AUTHORIZATION=auth)
             data = json.loads(response.content)
-            self.assertEqual(len(filter(lambda x: x['name'] == 'test-asset-reprovision-aliases-3.domain', data)), 1)
-            self.assertEqual(len(filter(lambda x: x['name'] == 'test-asset-reprovision-aliases-2.domain', data)), 0)
+            self.assertEqual(len([1 for x in data if x['name'] == 'test-asset-reprovision-aliases-3.domain']), 1)
+            self.assertEqual(len([1 for x in data if x['name'] == 'test-asset-reprovision-aliases-2.domain']), 0)
 
     def test_reprovision_no_dns_change(self):
         user, auth = self.create_basic_objects()
@@ -850,7 +854,7 @@ class APITests(BaseTests):
         self.assertEqual(data['service_tag'], 'TESTASS')
         response = self.client.get('/tkickstartcomplete/TESTASS')
         self.assertResponse(response, 200)
-        self.assertEqual(response.content, 'true')
+        self.assertEqual(response.content, b'true')
         response = self.client.get('/asset/TESTASS', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=auth)
         self.assertResponse(response, 200)
         asset = json.loads(response.content)
@@ -1373,9 +1377,9 @@ if hasattr(settings, 'SOCRATES_OVIRT_USERNAME') and 'SOCRATES_OVIRT_URL' in os.e
                 self.assertResponse(response, 200)
                 data = json.loads(response.content)
                 self.assertEqual(len(data['cpu']), vm['provision']['cpus'])
-                self.assertEqual(len(filter(lambda x: x['filename'].endswith('_data2'), data['storage'])), 1)
+                self.assertEqual(len([1 for x in data['storage'] if x['filename'].endswith('_data2')]), 1)
                 self.assertEqual(len(data['storage']), 2)
-                self.assertEqual(abs(filter(lambda x: x['filename'].endswith('_os'), data['storage'])[0]['capacity'] - vm['provision']['storage']['os']['size']) < 1024, True)
+                self.assertEqual(abs([x for x in data['storage'] if x['filename'].endswith('_os')][0]['capacity'] - vm['provision']['storage']['os']['size']) < 1024, True)
             finally:
                 response = self.client.delete('/asset/%s' % data['id'], data=json.dumps({'log': 'Remove VM'}), content_type="application/json", HTTP_AUTHORIZATION=auth)
                 self.assertResponse(response, 204)
@@ -1496,9 +1500,9 @@ if 'SOCRATES_LIBVIRT_URL' in os.environ and 'SOCRATES_LIBVIRT_STORAGE' in os.env
                 self.assertResponse(response, 200)
                 data = json.loads(response.content)
                 self.assertEqual(len(data['cpu']), vm['provision']['cpus'])
-                self.assertEqual(len(filter(lambda x: '_data2' in x['filename'], data['storage'])), 1)
+                self.assertEqual(len([1 for x in data['storage'] if '_data2' in x['filename']]), 1)
                 self.assertEqual(len(data['storage']), 2)
-                self.assertEqual(abs(filter(lambda x: '_os' in x['filename'], data['storage'])[0]['capacity'] - vm['provision']['storage']['os']['size']) < 1024, True)
+                self.assertEqual(abs([x for x in data['storage'] if '_os' in x['filename']][0]['capacity'] - vm['provision']['storage']['os']['size']) < 1024, True)
                 self.assertEqual(data['ram']['total'], vm['provision']['ram'])
 
                 response = self.client.post(r'/task/invoke/socrates_api.tasks.collect_all_vms', HTTP_AUTHORIZATION=auth)

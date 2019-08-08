@@ -8,7 +8,7 @@
   - command: cat {{ playbook_dir }}/../switch.picker
     register: state
     failed_when: false
-  - command: python -c 'print {% if state.rc == 0 %}{{ state.stdout }}{% else %}0{% endif %} + 1'
+  - command: python -c 'print({% if state.rc == 0 %}{{ state.stdout }}{% else %}0{% endif %} + 1)'
     register: picker
   - copy:
       content: '{"domain": "{{ asset.switch.domain }}", "name": "{{ network.ipam.name }}", "vlan_id": {{ picker.stdout }}}'

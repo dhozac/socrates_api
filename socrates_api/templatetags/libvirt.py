@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import
 import string
 from django import template
 
@@ -19,7 +20,7 @@ register = template.Library()
 
 @register.filter
 def libvirt_device_letter(disk_id):
-    return string.lowercase[disk_id]
+    return string.ascii_lowercase[disk_id]
 
 @register.filter
 def network_to_vlan_id(network, domain):

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import
 from django.views.generic import DetailView
 from django.http import Http404
 from django.template import engines
@@ -65,7 +66,7 @@ class NodeHMACPermission(permissions.BasePermission):
         if 'hmac' not in request.query_params:
             logger.error("Request from %s is missing HMAC" % view.get_slug())
             return False
-        h = hmac.HMAC(settings.SOCRATES_NODE_HMAC_KEY, view.kwargs[view.slug_url_kwarg] + view.get_nonce(), hashlib.sha256)
+        h = hmac.HMAC(settings.SOCRATES_NODE_HMAC_KEY, (view.kwargs[view.slug_url_kwarg] + view.get_nonce()).encode("ascii"), hashlib.sha256)
         ours = h.hexdigest()
         if ours != request.query_params['hmac'].replace(":", ""):
             logger.error("Request from %s has invalid HMAC: %s != %s", view.get_slug(), ours, request.query_params['hmac'])
@@ -176,7 +177,7 @@ class KickstartView(RethinkSingleObjectMixin, DetailView):
     slug_field = 'service_tag'
     def get_template_names(self):
         conn = self.get_connection()
-        obj = r.table('os').get_all(self.object['provision']['os'], index='name').run(conn).next()
+        obj = next(r.table('os').get_all(self.object['provision']['os'], index='name').run(conn))
         return engines['django'].from_string(obj['kickstart'])
     def get_context_data(self, **kwargs):
         context = super(KickstartView, self).get_context_data(**kwargs)

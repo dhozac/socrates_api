@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import
 from django import template
 from django.template.defaulttags import URLNode, url
 from netaddr import IPNetwork
@@ -90,7 +91,7 @@ def bonding_config(asset):
             interfaces[nic['name']] = dict(nic)
     ipam = get_ipam(asset, False)
     for vlan in [asset['provision']['vlan']] + asset['provision'].get('vlans', []):
-        ports = vlan.get('ports', interfaces.keys())
+        ports = vlan.get('ports', list(interfaces.keys()))
         ports.sort()
         for port in ports:
             if 'bond' not in interfaces[port]:
@@ -113,7 +114,7 @@ def bonding_config(asset):
 
     for nic in interfaces.keys():
         if 'remote' in interfaces[nic].keys() and asset['asset_type'] == 'server':
-            switch = AssetSerializer.filter(switch={'domain': interfaces[nic]['remote']['domain']}).next()
+            switch = next(AssetSerializer.filter(switch={'domain': interfaces[nic]['remote']['domain']}))
             break
 
     return {'interfaces': interfaces, 'vlans': vlans, 'switch': switch}
