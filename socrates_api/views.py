@@ -451,7 +451,7 @@ class UserInfoView(APIView):
     def get(self, request, format=None):
         return Response({
             "username": request.user.username,
-            "logged_in": request.user.is_authenticated(),
+            "logged_in": request.user.is_authenticated if isinstance(request.user.is_authenticated, bool) else request.user.is_authenticated(),
             "is_superuser": request.user.is_superuser,
             "is_console_user": request.user.is_console_user,
         })
