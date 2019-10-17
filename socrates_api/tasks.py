@@ -1886,7 +1886,14 @@ def provision_vm(asset):
     parent_asset = AssetSerializer.get(service_tag=asset['parent'])
     if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
         url = urlparse(parent_asset['url'])
-        update = run_playbook_with_output(asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+        ansible_asset = asset_get(asset['service_tag'])
+        if asset.get('provisioning', False):
+            ansibel_asset['provision']['vlan']['network'] = NetworkSerializer.get_by_domain_install(domain=parent_asset['service_tag'])
+        else:
+            ansible_asset['provision']['vlan']['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=asset['provision']['vlan'])
+        for vlan in ansible_asset['provision'].get('vlans', []):
+            vlan['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=vlan)
+        update = run_playbook_with_output(ansible_asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
         return asset_update(asset, update)
     elif parent_asset['asset_subtype'] == 'vmware':
         return provision_vm_vmware(asset, parent_asset)
