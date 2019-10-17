@@ -1004,6 +1004,16 @@ def validate_irule_name(name):
         raise serializers.ValidationError("irule '%s' not found" % name)
     return name
 
+def validate_load_balancer_profile(value):
+    if not re.match(getattr(settings, 'SOCRATES_LB_PROFILE_RE', '.'), value):
+        raise serializers.ValidationError("invalid profile specified: %s" % value)
+    return value
+
+def validate_load_balancer_monitor(value):
+    if not re.match(getattr(settings, 'SOCRATES_LB_MONITOR_RE', '.'), value):
+        raise serializers.ValidationError("invalid monitor specified: %s" % value)
+    return value
+
 class LoadBalancerSerializer(HistorySerializerMixin):
     id = serializers.CharField(required=False)
     cluster = serializers.CharField(required=True)
@@ -1013,8 +1023,8 @@ class LoadBalancerSerializer(HistorySerializerMixin):
     ip = serializers.IPAddressField(required=False)
     port = serializers.IntegerField(min_value=1, max_value=65535, required=False)
     endpoints = serializers.ListField(child=serializers.URLField(), required=False)
-    profiles = serializers.ListField(child=serializers.CharField(), required=False)
-    monitors = serializers.ListField(child=serializers.CharField(), required=False)
+    profiles = serializers.ListField(child=serializers.CharField(validators=[validate_load_balancer_profile]), required=False)
+    monitors = serializers.ListField(child=serializers.CharField(validators=[validate_load_balancer_monitor]), required=False)
     irules = serializers.ListField(child=serializers.CharField(validators=[validate_irule_name]), required=False)
     default_persistence_profile = serializers.CharField(required=False)
     fallback_persistence_profile = serializers.CharField(required=False)
