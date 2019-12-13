@@ -1925,7 +1925,7 @@ def remove_vm(asset):
     parent_asset = AssetSerializer.get(service_tag=asset['parent'])
     if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
         url = urlparse(parent_asset['url'])
-        update = run_playbook_with_output(asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+        update = run_playbook_with_output(asset, url.path.lstrip("/") + "decommission.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
         return asset_update(asset, update)
     elif asset['asset_subtype'] == 'vmware':
         return remove_vm_vmware(asset)
