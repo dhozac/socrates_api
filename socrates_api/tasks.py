@@ -2737,7 +2737,10 @@ def add_network(asset, network):
     network = NetworkSerializer.get(id=network['id'])
     network['ipam'] = ipam.ip_prefix_get(network)
     if asset['asset_type'] == 'vmcluster':
-        if asset['asset_subtype'] == 'vmware':
+        url = urlparse(asset['url'])
+        if url.scheme == 'ansible':
+            return add_network_ansible(asset, network, url)
+        elif asset['asset_subtype'] == 'vmware':
             return add_network_vmware(asset, network)
         elif asset['asset_subtype'] == 'ovirt':
             return add_network_ovirt(asset, network)
@@ -2751,7 +2754,10 @@ def add_network(asset, network):
 @shared_task
 def remove_network(asset, network):
     if asset['asset_type'] == 'vmcluster':
-        if asset['asset_subtype'] == 'vmware':
+        url = urlparse(asset['url'])
+        if url.scheme == 'ansible':
+            return remove_network_ansible(asset, network, url)
+        elif asset['asset_subtype'] == 'vmware':
             return remove_network_vmware(asset, network)
         elif asset['asset_subtype'] == 'ovirt':
             return remove_network_ovirt(asset, network)
