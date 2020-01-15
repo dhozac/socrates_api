@@ -1061,6 +1061,11 @@ class LoadBalancerSerializer(HistorySerializerMixin):
             raise serializers.ValidationError("unable to find reservation for service IP: %s" % str(e))
         return value
 
+    def validate_name(self, value):
+        if self.instance is not None and self.instance['name'] != value:
+            raise serializers.ValidationError("you cannot change the name (was %s, new %s)" % (self.instance['name'], value))
+        return value
+
     def validate(self, data):
         if data.get('protocol', self.instance.get('protocol', None) if self.instance is not None else None) == 'http':
             cluster = data.get('cluster', self.instance.get('cluster', None) if self.instance is not None else None)
