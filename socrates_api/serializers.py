@@ -954,7 +954,7 @@ LOAD_BALANCING_METHODS = [
 
 class LoadBalancerMemberSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
-    port = serializers.CharField(required=True)
+    port = serializers.IntegerField(required=True)
     ratio = serializers.IntegerField(required=False)
     priority = serializers.IntegerField(required=False)
 
