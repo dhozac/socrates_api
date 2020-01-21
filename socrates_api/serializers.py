@@ -1014,6 +1014,18 @@ def validate_load_balancer_monitor(value):
         raise serializers.ValidationError("invalid monitor specified: %s" % value)
     return value
 
+class LBURLValidator(URLValidator):
+    from django.utils.regex_helper import _lazy_re_compile
+    hostname_re = '(' + URLValidator.hostname_re + '|*)'
+    # The below is from URLValidator
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\.\-\+]*)://'  # scheme is validated separately
+        r'(?:[^\s:@/]+(?::[^\s:@/]*)?@)?'  # user:pass authentication
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'
+        r'(?::\d{2,5})?'  # port
+        r'(?:[/?#][^\s]*)?'  # resource path
+        r'\Z', re.IGNORECASE)
+
 class LoadBalancerSerializer(HistorySerializerMixin):
     id = serializers.CharField(required=False)
     cluster = serializers.CharField(required=True)
@@ -1022,7 +1034,7 @@ class LoadBalancerSerializer(HistorySerializerMixin):
     protocol = serializers.ChoiceField(choices=['http', 'tcp', 'udp'], required=True)
     ip = serializers.IPAddressField(required=False)
     port = serializers.IntegerField(min_value=1, max_value=65535, required=False)
-    endpoints = serializers.ListField(child=serializers.URLField(), required=False)
+    endpoints = serializers.ListField(child=serializers.CharField(validators=[LBURLValidator]), required=False)
     profiles = serializers.ListField(child=serializers.CharField(validators=[validate_load_balancer_profile]), required=False)
     monitors = serializers.ListField(child=serializers.CharField(validators=[validate_load_balancer_monitor]), required=False)
     irules = serializers.ListField(child=serializers.CharField(validators=[validate_irule_name]), required=False)
