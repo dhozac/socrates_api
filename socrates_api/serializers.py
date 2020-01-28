@@ -23,6 +23,7 @@ from celery import chain
 from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth.models import Group
+from django.core.validators import URLValidator
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 from django_rethink import r, RethinkSerializer, RethinkObjectNotFound, RethinkMultipleObjectsFound, HistorySerializerMixin, PermissionsSerializer, ReviewSerializer, HistorySerializerMixin, NeedsReviewMixin, HistorySerializer, validate_group_name, validate_username
