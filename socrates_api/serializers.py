@@ -1016,13 +1016,13 @@ def validate_load_balancer_monitor(value):
     return value
 
 class LBURLValidator(URLValidator):
-    from django.utils.regex_helper import _lazy_re_compile
+    from django.core.validators import _lazy_re_compile
     hostname_re = '(' + URLValidator.hostname_re + '|*)'
     # The below is from URLValidator
     regex = _lazy_re_compile(
         r'^(?:[a-z0-9\.\-\+]*)://'  # scheme is validated separately
         r'(?:[^\s:@/]+(?::[^\s:@/]*)?@)?'  # user:pass authentication
-        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'
+        r'(?:' + URLValidator.ipv4_re + '|' + URLValidator.ipv6_re + '|' + URLValidator.host_re + ')'
         r'(?::\d{2,5})?'  # port
         r'(?:[/?#][^\s]*)?'  # resource path
         r'\Z', re.IGNORECASE)
