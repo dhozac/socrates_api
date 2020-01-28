@@ -141,6 +141,7 @@ class BaseTests(TestCase):
         r.table('networks').delete().run(self.conn)
         r.table('quotas').delete().run(self.conn)
         r.table('events').delete().run(self.conn)
+        r.table('load_balancer').delete().run(self.conn)
         super(BaseTests, self).tearDown()
 
     def assertResponse(self, response, status_code, body_contains=None):
@@ -1196,7 +1197,7 @@ class APITests(BaseTests):
 
         response = self.client.post(reverse('socrates_api:loadbalancer_list'), data=json.dumps({
                 'cluster': 'lbcluster',
-                'name': "service1",
+                'name': "service5",
                 'members': [{'name': 'lb-server1.domain', 'port': 443}],
                 'protocol': 'http',
                 'endpoints': ['http://*.lb-target.domain/'],
