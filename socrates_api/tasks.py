@@ -1888,7 +1888,7 @@ def provision_vm(asset):
         url = urlparse(parent_asset['url'])
         ansible_asset = asset_get(asset['service_tag'])
         if asset.get('provisioning', False):
-            ansibel_asset['provision']['vlan']['network'] = NetworkSerializer.get_by_domain_install(domain=parent_asset['service_tag'])
+            ansible_asset['provision']['vlan']['network'] = NetworkSerializer.get_by_domain_install(domain=parent_asset['service_tag'])
         else:
             ansible_asset['provision']['vlan']['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=asset['provision']['vlan'])
         for vlan in ansible_asset['provision'].get('vlans', []):
