@@ -709,7 +709,7 @@ def ipmi_shutdown(self, asset):
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
             url = urlparse(parent_asset['url'])
-            run_playbook(asset, url.path.lstrip("/") + "shutdown.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+            run_playbook(asset, url.path.lstrip("/") + "shutdown.yml", extra_vars={'parent_asset': parent_asset, 'url': url._asdict()})
         elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
             vm = find_vm_vmware(si, datacenter, asset)
@@ -737,7 +737,7 @@ def ipmi_poweron(self, asset):
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
             url = urlparse(parent_asset['url'])
-            run_playbook(asset, url.path.lstrip("/") + "poweron.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+            run_playbook(asset, url.path.lstrip("/") + "poweron.yml", extra_vars={'parent_asset': parent_asset, 'url': url._asdict()})
         elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
             vm = find_vm_vmware(si, datacenter, asset)
@@ -769,7 +769,7 @@ def ipmi_reboot(self, asset):
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
             url = urlparse(parent_asset['url'])
-            run_playbook(asset, url.path.lstrip("/") + "reboot.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+            run_playbook(asset, url.path.lstrip("/") + "reboot.yml", extra_vars={'parent_asset': parent_asset, 'url': url._asdict()})
         elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
             vm = find_vm_vmware(si, datacenter, asset)
@@ -825,7 +825,7 @@ def ipmi_power_state(self, asset):
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
             url = urlparse(parent_asset['url'])
-            return run_playbook_with_output(asset, url.path.lstrip("/") + "power-state.yml", extra_vars={'parent_asset': parent_asset, 'url': url})['result']
+            return run_playbook_with_output(asset, url.path.lstrip("/") + "power-state.yml", extra_vars={'parent_asset': parent_asset, 'url': url._asdict()})['result']
         elif asset['asset_subtype'] == 'vmware':
             si, vcenter, datacenter, cluster = connect_hypervisor_vmware(parent_asset)
             vm = find_vm_vmware(si, datacenter, asset)
@@ -956,7 +956,7 @@ def reconfigure_network_port_ansible(switch_asset, url, asset):
     run_playbook(ansible_asset, url.path.lstrip("/") + "reconfigure.yml",
                  switch=switch, extra_vars={
                      'switch_asset': switch_asset,
-                     'url': url,
+                     'url': url._asdict(),
                      'additional_vlans': additional_vlans,
                  })
 
@@ -979,7 +979,7 @@ def reconfigure_network_port_vm_ansible(parent_asset, url, asset):
     run_playbook(ansible_asset, url.path.lstrip("/") + "reconfigure.yml",
                  switch=switch, extra_vars={
                      'parent_asset': parent_asset,
-                     'url': url,
+                     'url': url._asdict(),
                  })
 
 @shared_task
@@ -1893,7 +1893,7 @@ def provision_vm(asset):
             ansible_asset['provision']['vlan']['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=asset['provision']['vlan'])
         for vlan in ansible_asset['provision'].get('vlans', []):
             vlan['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=vlan)
-        update = run_playbook_with_output(ansible_asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+        update = run_playbook_with_output(ansible_asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url._asdict()})
         return asset_update(asset, update)
     elif parent_asset['asset_subtype'] == 'vmware':
         return provision_vm_vmware(asset, parent_asset)
@@ -1925,7 +1925,7 @@ def remove_vm(asset):
     parent_asset = AssetSerializer.get(service_tag=asset['parent'])
     if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
         url = urlparse(parent_asset['url'])
-        update = run_playbook_with_output(asset, url.path.lstrip("/") + "decommission.yml", extra_vars={'parent_asset': parent_asset, 'url': url})
+        update = run_playbook_with_output(asset, url.path.lstrip("/") + "decommission.yml", extra_vars={'parent_asset': parent_asset, 'url': url._asdict()})
         return asset_update(asset, update)
     elif asset['asset_subtype'] == 'vmware':
         return remove_vm_vmware(asset)
@@ -1936,7 +1936,7 @@ def remove_vm(asset):
 
 def collect_vms_ansible(asset):
     url = urlparse(asset['url'])
-    vms = run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", extra_vars={'url': url})
+    vms = run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", extra_vars={'url': url._asdict()})
     service_tags = set()
     for vm in vms:
         service_tags.add(vm['service_tag'])
@@ -2051,7 +2051,7 @@ def collect_switch_networks(asset):
         )
         firewall_domains = [x['network']['device'] for x in firewalls]
         switch = url.netloc.split("@")[-1]
-        for domain in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=switch, extra_vars={'url': url, 'collect': 'switch'}):
+        for domain in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=switch, extra_vars={'url': url._asdict(), 'collect': 'switch'}):
             try:
                 network = NetworkSerializer.get(
                     reduce(r.or_,
@@ -2082,7 +2082,7 @@ def collect_switch_networks(asset):
 def collect_firewall_networks_ansible(asset, url):
     networks = 0
     hypervisors = [x['service_tag'] for x in AssetSerializer.filter({'asset_type': 'vmcluster', 'state': 'in-use'})]
-    for network in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=url.netloc.split("@")[-1], extra_vars={'url': url, 'collect': 'firewall'}):
+    for network in run_playbook_with_output(asset, url.path.lstrip("/") + "collect.yml", switch=url.netloc.split("@")[-1], extra_vars={'url': url._asdict(), 'collect': 'firewall'}):
         networks += 1
         try:
             current = NetworkSerializer.get(vrf=network['vrf'], network=network['network'], length=network['length'])
@@ -2720,7 +2720,7 @@ def remove_network_libvirt(asset, network):
 
 def add_network_ansible(asset, network, url):
     switch = url.netloc.split("@")[-1]
-    domain = run_playbook_with_output(asset, url.path.lstrip("/") + "add-network.yml", switch=switch, extra_vars={'network': network, 'url': url})
+    domain = run_playbook_with_output(asset, url.path.lstrip("/") + "add-network.yml", switch=switch, extra_vars={'network': network, 'url': url._asdict()})
     serializer = NetworkSerializer(network, data={'domains': {domain['domain']: domain}}, partial=True)
     serializer.is_valid(raise_exception=True)
     serializer.save()
@@ -2728,7 +2728,7 @@ def add_network_ansible(asset, network, url):
 
 def remove_network_ansible(asset, network, url):
     switch = url.netloc.split("@")[-1]
-    run_playbook(asset, url.path.lstrip("/") + "remove-network.yml", switch=switch, extra_vars={'network': network, 'url': url})
+    run_playbook(asset, url.path.lstrip("/") + "remove-network.yml", switch=switch, extra_vars={'network': network, 'url': url._asdict()})
     return asset
 
 @shared_task
@@ -2771,7 +2771,7 @@ def remove_network(asset, network):
 def firewall_apply_ansible(asset, url, network, rules, networks):
     return run_playbook(asset, url.path.lstrip("/") + "apply.yml",
         switch=url.netloc.split("@")[-1],
-        extra_vars={'url': url, 'network': network, 'rules': rules, 'networks': networks})
+        extra_vars={'url': url._asdict(), 'network': network, 'rules': rules, 'networks': networks})
 
 @shared_task
 def firewall_apply(asset, network):
@@ -2809,7 +2809,7 @@ def firewall_apply(asset, network):
 def _firewall_group_manage_ansible(asset, name, url, group):
     return run_playbook(asset, url.path.lstrip("/") + name + ".yml",
         switch=url.netloc.split("@")[-1],
-        extra_vars={'url': url, 'group': group})
+        extra_vars={'url': url._asdict(), 'group': group})
 
 def _firewall_group_manage(group, name):
     for asset in AssetSerializer.filter(r.row.has_fields({'network': {'device': True}, 'url': True})):
@@ -2845,7 +2845,7 @@ def _run_load_balancer_playbook(load_balancer, playbook):
     for subasset in urls.values():
         url = urlparse(subasset['url'])
         switch = url.netloc.split("@")[-1]
-        run_playbook(subasset, url.path.lstrip("/") + playbook, switch=switch, extra_vars={'load_balancer': load_balancer, 'irules': irules, 'url': url})
+        run_playbook(subasset, url.path.lstrip("/") + playbook, switch=switch, extra_vars={'load_balancer': load_balancer, 'irules': irules, 'url': url._asdict()})
 
 @shared_task
 def add_load_balancer(load_balancer):
