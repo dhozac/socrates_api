@@ -1894,7 +1894,7 @@ def provision_vm(asset):
         for vlan in ansible_asset['provision'].get('vlans', []):
             vlan['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=vlan)
         os = OperatingSystemSerializer.get(name=asset['provision']['os'])
-        update = run_playbook_with_output(ansible_asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url._asdict(), 'os': os})
+        update = run_playbook_with_output(ansible_asset, url.path.lstrip("/") + "provision.yml", extra_vars={'parent_asset': parent_asset, 'url': url._asdict(), 'os': os.get('ids')})
         return asset_update(asset, update)
     elif parent_asset['asset_subtype'] == 'vmware':
         return provision_vm_vmware(asset, parent_asset)
