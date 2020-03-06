@@ -976,11 +976,15 @@ def reconfigure_network_port_vm_ansible(parent_asset, url, asset):
         for vlan in ansible_asset['provision'].get('vlans', []):
             vlan['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=vlan)
 
-    run_playbook(ansible_asset, url.path.lstrip("/") + "reconfigure.yml",
-                 extra_vars={
-                     'parent_asset': parent_asset,
-                     'url': url._asdict(),
-                 })
+    update = run_playbook_with_output(
+        ansible_asset,
+        url.path.lstrip("/") + "reconfigure.yml",
+        extra_vars={
+            'parent_asset': parent_asset,
+            'url': url._asdict(),
+        }
+    )
+    return asset_update(ansible_asset, update)
 
 @shared_task
 def reconfigure_network_port(asset):
@@ -990,7 +994,7 @@ def reconfigure_network_port(asset):
             switch_asset = next(AssetSerializer.filter(switch={'domain': domain}))
             url = urlparse(switch_asset['url'])
             if url.scheme == 'ansible':
-                reconfigure_network_port_ansible(switch_asset, url, asset)
+                asset = reconfigure_network_port_ansible(switch_asset, url, asset)
             else:
                 raise Exception("Unknown switch URL scheme for %s" % switch_asset['service_tag'])
     elif asset['asset_type'] == 'vm':
