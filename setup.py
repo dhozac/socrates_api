@@ -5,7 +5,7 @@ import os
 import re
 
 setup(name='socrates_api',
-      version='1.3.3',
+      version='1.3.4',
       license='Apache Software License',
       description='Source of Truth for hardware, virtual machines, and networks',
       author='Klarna Bank AB',
