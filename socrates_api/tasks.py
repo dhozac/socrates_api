@@ -994,14 +994,14 @@ def reconfigure_network_port(asset):
             switch_asset = next(AssetSerializer.filter(switch={'domain': domain}))
             url = urlparse(switch_asset['url'])
             if url.scheme == 'ansible':
-                asset = reconfigure_network_port_ansible(switch_asset, url, asset)
+                reconfigure_network_port_ansible(switch_asset, url, asset)
             else:
                 raise Exception("Unknown switch URL scheme for %s" % switch_asset['service_tag'])
     elif asset['asset_type'] == 'vm':
         parent_asset = AssetSerializer.get(service_tag=asset['parent'])
         if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
             url = urlparse(parent_asset['url'])
-            reconfigure_network_port_vm_ansible(parent_asset, url, asset)
+            asset = reconfigure_network_port_vm_ansible(parent_asset, url, asset)
         elif asset['asset_subtype'] == 'vmware':
             asset = reconfigure_network_port_vmware(asset)
         elif asset['asset_subtype'] == 'ovirt':
