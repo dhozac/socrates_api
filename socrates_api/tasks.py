@@ -977,7 +977,7 @@ def reconfigure_network_port_vm_ansible(parent_asset, url, asset):
             vlan['network'] = NetworkSerializer.get_by_asset_vlan(domain=parent_asset['service_tag'], vlan=vlan)
 
     run_playbook(ansible_asset, url.path.lstrip("/") + "reconfigure.yml",
-                 switch=switch, extra_vars={
+                 extra_vars={
                      'parent_asset': parent_asset,
                      'url': url._asdict(),
                  })
