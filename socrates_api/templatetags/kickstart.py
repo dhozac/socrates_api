@@ -78,7 +78,7 @@ def software_raid_disks(asset):
 @register.filter
 def cidr_to_netmask(cidr):
     net = IPNetwork(cidr)
-    return net.netmask
+    return str(net.netmask)
 
 @register.filter
 def bonding_config(asset):
@@ -128,3 +128,27 @@ def fetch_url(url, **kwargs):
     except Exception as e:
         logger.error("Failed to fetch URL %s with %r: %s" % (url, kwargs, e))
         return 500
+
+@register.simple_tag
+def http_request(url, method, params={}, json=None, headers={}):
+    try:
+        response = getattr(requests, method.lower())(url, params=params, json=json, headers=headers)
+        logger.info("Requesting URL %s returned %s" % (response.url, response.status_code))
+        return {
+            'status_code': response.status_code,
+            'data': response.text,
+        }
+    except Exception as e:
+        logger.error("Failed to fetch URL %s: %s" % (url, e))
+        return {
+            'status_code': 500,
+            'data': None,
+        }
+
+@register.simple_tag
+def make_dict(**kwargs):
+    return kwargs
+
+@register.filter
+def split(value, splitter):
+    return value.split(splitter)
