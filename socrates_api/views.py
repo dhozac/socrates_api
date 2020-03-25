@@ -336,7 +336,7 @@ class AssetIPMIActionView(RethinkAPIMixin, APIView):
             task = asset_get_by_id.s(id)
         task = task | ipmi_power_state.s()
         try:
-            result = task.apply_async().get(propagate=True)
+            result = task.apply_async(expires=settings.SOCRATES_CHANGEFEED_MAX_WAIT).get(propagate=True)
             if result is None:
                 raise Exception("Unable to determine power-state")
             return Response({'power_state': result})
