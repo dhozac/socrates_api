@@ -47,8 +47,6 @@ from django_rethink import r, get_connection, RethinkObjectNotFound
 from socrates_api.serializers import *
 from socrates_api.ipam import IPAMIPNotFoundException
 from tempfile import NamedTemporaryFile
-from pyghmi.ipmi import command
-from pyghmi import exceptions as pyghmi_exception
 from kombu.utils.json import JSONEncoder
 from netaddr import IPNetwork, IPAddress
 
@@ -689,20 +687,20 @@ def asset_replace(asset, new_asset, **kwargs):
 class IPMIException(Exception):
     pass
 
-def ipmi_command(service_tag, username, password, callback):
+def ipmi_command(service_tag, username, password, command):
     try:
-        session = command.Command(bmc=service_tag + '.' + settings.SOCRATES_OOB_DOMAIN, userid=username, password=password)
-        # this looks ugly appending a dot like this but makes the variable
-        # in settings look nicer.
-        return callback(session)
-    except pyghmi_exception.IpmiException as e:
-        raise IPMIException("We have IPMI errors! %s: %s" % (service_tag, e.message))
+        return subprocess.check_output(["ipmitool",
+            "-I", "lanplus", "-U", username, "-P", password,
+            "-H", service_tag + '.' + settings.SOCRATES_OOB_DOMAIN,
+            ] + command, stderr=subprocess.STDOUT, timeout=10).decode("ascii")
+    except subprocess.CalledProcessError as e:
+        raise IPMIException("We have IPMI errors! %s: %d %s" % (service_tag, e.returncode, e.output))
 
 @shared_task(bind=True)
 def ipmi_shutdown(self, asset):
     if asset['asset_type'] == 'server':
         try:
-            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], lambda session: session.set_power('off', wait=False))
+            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'power', 'off'])
         except IPMIException as e:
             self.retry(exc=e, countdown=3, max_retries=40)
     elif asset['asset_type'] == 'vm':
@@ -730,7 +728,7 @@ def ipmi_shutdown(self, asset):
 def ipmi_poweron(self, asset):
     if asset['asset_type'] == 'server':
         try:
-            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], lambda session: session.set_power('on', wait=False))
+            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'power', 'on'])
         except IPMIException as e:
             self.retry(exc=e, countdown=3, max_retries=40)
     elif asset['asset_type'] == 'vm':
@@ -762,7 +760,10 @@ def ipmi_reboot(self, asset):
         # if server is on, reboot.
         # if server is off, power on.
         try:
-            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], lambda session: session.set_power('boot', wait=False))
+            if 'on' in ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'power', 'status']):
+                ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'power', 'reset'])
+            else:
+                ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'power', 'on'])
         except IPMIException as e:
             self.retry(exc=e, countdown=3, max_retries=40)
     elif asset['asset_type'] == 'vm':
@@ -797,7 +798,7 @@ def ipmi_reboot(self, asset):
 def ipmi_boot_pxe(self, asset):
     if asset['asset_type'] == 'server':
         try:
-            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], lambda session: session.set_bootdev('network', persist=False))
+            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'bootdev', 'pxe'])
         except IPMIException as e:
             self.retry(exc=e, countdown=3, max_retries=40)
     return asset
@@ -806,7 +807,7 @@ def ipmi_boot_pxe(self, asset):
 def ipmi_ping(self, asset):
     if asset['asset_type'] == 'server':
         try:
-            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], lambda session: session.get_power())
+            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'power', 'status'])
         except IPMIException as e:
             self.retry(exc=e, countdown=3, max_retries=40)
     return asset
@@ -816,7 +817,7 @@ def ipmi_power_state(self, asset):
     if asset['asset_type'] == 'server':
         if asset.get('oob'):
             try:
-                return ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], lambda session: session.get_power()['powerstate'])
+                return ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'power', 'status']).replace('Chassis Power is ', '').strip()
             except IPMIException as e:
                 self.retry(exc=e, countdown=3, max_retries=40)
         else:
