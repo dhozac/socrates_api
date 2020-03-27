@@ -44,14 +44,6 @@ with open(os.path.join(BASE_DIR, 'testdata', 'intake-sample.json')) as f:
 
 SOCRATES_IPAM = 'socrates_api.ipam.BonkIPAM'
 
-class FakePyghmiSession(object):
-    def __init__(self, service_tag, username, password, fail_ok=False):
-        pass
-    def set_power(self, state, wait=True):
-        pass
-    def set_bootdev(self, device, wait=True, persist=False):
-        pass
-
 @override_settings(RETHINK_DB_DB=os.environ.get('RETHINK_DB_DB', "socratesci"),
                    CELERY_TASK_EAGER_PROPAGATES=True,
                    CELERY_TASK_ALWAYS_EAGER=True,
@@ -71,7 +63,7 @@ class BaseTests(TestCase):
     def setUpClass(cls):
         super(BaseTests, cls).setUpClass()
         import socrates_api.tasks
-        socrates_api.tasks.ipmi_command = FakePyghmiSession
+        socrates_api.tasks.ipmi_command = lambda *args: 'Chassis Power is on'
         socrates_api.tasks.reconfigure_network_port_junos = lambda *args: True
         cls.conn = r.connect(host=settings.RETHINK_DB_HOST, port=settings.RETHINK_DB_PORT)
         try:
