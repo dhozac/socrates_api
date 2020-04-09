@@ -114,14 +114,15 @@ class IPXERouterView(NodeSlugMixin, RethinkAPIMixin, APIView):
         os = OperatingSystemSerializer.get(name=name)
         template = engines['django'].from_string(os['ipxe_script'])
         context = {'object': self.object, 'request': request}
-        context['network'] = NetworkSerializer.get_by_asset_vlan(context['object'], context['object']['provision']['vlan'])
-        ipam = get_ipam(context['object'], False)
-        context['network']['ipam'] = ipam.ip_prefix_get(context['network'])
-        context['networks'] = []
-        for vlan in context['object']['provision'].get('vlans', []):
-            network = NetworkSerializer.get_by_asset_vlan(context['object'], vlan)
-            network['ipam'] = ipam.ip_prefix_get(network)
-            context['networks'].append({'vlan': vlan, 'network': network})
+        if 'provision' in context['object']:
+            context['network'] = NetworkSerializer.get_by_asset_vlan(context['object'], context['object']['provision']['vlan'])
+            ipam = get_ipam(context['object'], False)
+            context['network']['ipam'] = ipam.ip_prefix_get(context['network'])
+            context['networks'] = []
+            for vlan in context['object']['provision'].get('vlans', []):
+                network = NetworkSerializer.get_by_asset_vlan(context['object'], vlan)
+                network['ipam'] = ipam.ip_prefix_get(network)
+                context['networks'].append({'vlan': vlan, 'network': network})
         return HttpResponse(template.render(context), content_type="text/plain")
 
 class IntakeReportView(NodeSlugMixin, RethinkAPIMixin, APIView):
