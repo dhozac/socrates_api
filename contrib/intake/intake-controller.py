@@ -16,22 +16,22 @@ def run(options, steps):
 
     try:
         system = dmidecode.system()
-        system_manufacturer = [v for k, v in system.iteritems() if 'Manufacturer' in v['data']][0]['data']['Manufacturer']
+        system_manufacturer = [v for k, v in system.items() if 'Manufacturer' in v['data']][0]['data']['Manufacturer']
         if system_manufacturer.startswith("HP"):
             system_manufacturer = "HP"
-            model = [v for k, v in system.iteritems() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
-            asset_tag = [v for k, v in system.iteritems() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
+            model = [v for k, v in system.items() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
+            asset_tag = [v for k, v in system.items() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
         elif system_manufacturer.startswith("Dell"):
             system_manufacturer = "Dell"
-            model = [v for k, v in system.iteritems() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
-            asset_tag = [v for k, v in system.iteritems() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
+            model = [v for k, v in system.items() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
+            asset_tag = [v for k, v in system.items() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
         elif system_manufacturer.startswith("Supermicro"):
             system_manufacturer = "Supermicro"
             baseboard = dmidecode.baseboard()
-            model = [v for k, v in system.iteritems() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
+            model = [v for k, v in system.items() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
             if model in ('Super Server', 'To be filled by O.E.M.'):
-                model = [v for k, v in baseboard.iteritems() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
-            asset_tag = [v for k, v in baseboard.iteritems() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
+                model = [v for k, v in baseboard.items() if 'Product Name' in v['data']][0]['data']['Product Name'].strip()
+            asset_tag = [v for k, v in baseboard.items() if 'Serial Number' in v['data']][0]['data']['Serial Number'].strip()
         else:
             raise Exception("Unknown")
     except:

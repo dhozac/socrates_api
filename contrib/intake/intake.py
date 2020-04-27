@@ -11,6 +11,7 @@ from common import *
 
 def main(system_manufacturer, model, asset_tag, configuration_file):
     dev_null = open("/dev/null", "w")
+    is_efi = os.path.exists("/sys/firmware/efi")
     interfaces = filter(lambda x: not x.startswith("lo"), netifaces.interfaces())
     lshw_rc, lshw_out, lshw_err = call_with_output(["lshw", "-json"], 'Failed to run lshw with %(returncode)d:\n%(err)s')
     lshw_dict = json.loads(lshw_out)
@@ -56,6 +57,8 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
                 ipmicfg['chassis'] = m.group(1)
 
     oob = {}
+    subprocess.call(["modprobe", "ipmi_devintf"])
+    time.sleep(3)
 
     p = subprocess.Popen(["ipmitool", "mc", "info"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     ipmitool_mc_out, ipmitool_mc_err = p.communicate()
@@ -100,6 +103,7 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
         'by_id_map': by_id_map,
         'oob': oob,
         'ipmicfg': ipmicfg,
+        'efi': is_efi,
     }, sys.stdout)
 
 if __name__ == "__main__":

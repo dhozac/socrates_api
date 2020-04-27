@@ -23,7 +23,7 @@ HP_RAID_LEVELS = {
     'RAID-10': '1+0',
 }
 def hp_same_config(old_vdisk, new_vdisks):
-    for disk_name, new_vdisk in new_vdisks.iteritems():
+    for disk_name, new_vdisk in new_vdisks.items():
         if (
             old_vdisk['FaultTolerance'] == HP_RAID_LEVELS.get(new_vdisk['raid'], None) and
             set(map(lambda x: x['ID'], old_vdisk['pdisks'])) == set(map(lambda x: x['id'], new_vdisk['pdisks']))
@@ -63,7 +63,7 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
             if clear_foreign:
                 call_with_output(["omconfig", "storage", "controller", "action=clearforeignconfig", "controller=%s" % controller['ID']], "Failed to clear foreign config: %(returncode)s\n%(out)s%(err)s")
 
-        for disk in sorted(configuration['storage'].iteritems(), key=lambda v: 0 if v[0] == 'os' else 1):
+        for disk in sorted(configuration['storage'].items(), key=lambda v: 0 if v[0] == 'os' else 1):
             disk_name, disk = disk
             if disk_name in good_vdisks:
                 continue
@@ -138,7 +138,7 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
                     result['vdisks_by_id'][disk_name] = vdisk['DiskName']
 
 
-        for disk in sorted(configuration['storage'].iteritems(), key=lambda v: 0 if v[0] == 'os' else 1):
+        for disk in sorted(configuration['storage'].items(), key=lambda v: 0 if v[0] == 'os' else 1):
             disk_name, disk = disk
             if disk_name in good_vdisks:
                 continue
@@ -181,7 +181,7 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
                     good_vdisks.append(vdisk['name'])
                     result['vdisks_by_id'][vdisk['name']] = vdisk['by_id']
 
-        for disk in sorted(configuration['storage'].iteritems(), key=lambda v: 0 if v[0] == 'os' else 1):
+        for disk in sorted(configuration['storage'].items(), key=lambda v: 0 if v[0] == 'os' else 1):
             disk_name, disk = disk
             if disk_name in good_vdisks:
                 continue

@@ -125,6 +125,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
     switch = serializers.DictField(required=False)
     network = serializers.DictField(required=False)
     cards = serializers.ListField(child=serializers.DictField(), required=False)
+    efi = serializers.BooleanField(required=False)
     # Field generated from warranty API
     warranty = WarrantySerializer(required=False)
     # Timestamps

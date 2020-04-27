@@ -7,6 +7,7 @@ import json
 import pty
 import atexit
 import time
+import shutil
 
 def fail_json(msg):
     json.dump({'failed': True, 'msg': msg}, sys.stdout)
@@ -42,7 +43,16 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
         (pid, fd) = pty.fork()
         update_out = ""
         if pid == 0:
-            os.execvp("dsu", ["dsu", "-n", "-u"])
+            if os.path.exists('/usr/share/dell_gpg_keys'):
+                src_dir = '/usr/share/dell_gpg_keys'
+                dst_dir = '/usr/libexec/dell_dup'
+                for i in os.listdir(src_dir):
+                    if os.path.isdir(os.path.join(src_dir, i)):
+                        shutil.copytree(os.path.join(src_dir, i), os.path.join(dst_dir, i))
+                    else:
+                        shutil.copy2(os.path.join(src_dir, i), os.path.join(dst_dir, i))
+
+            os.execvp("dsu", ["dsu", "-n", "-u", "--import-public-key"])
             os._exit(42)
         else:
             while True:
@@ -55,7 +65,7 @@ def main(system_manufacturer, model, asset_tag, configuration_file):
                 update_out += buf
             pid, update_rc, rusage = os.wait4(pid, 0)
             update_rc = os.WEXITSTATUS(update_rc)
-        if update_rc not in (0, 1, 8):
+        if update_rc not in (0, 1, 8, 26, 34):
             fail_json("Updating firmware failed with %d:\n%s" % (update_rc, update_out))
 
         json.dump({'success': True, 'failed': False, 'msg': 'All firmware patched', 'log': update_out}, sys.stdout)
