@@ -93,7 +93,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
     conn = get_connection()
     raw_asset = next(r.table("assets_raw").get_all(service_tag, index="service_tag").run(conn))
     data = {}
-    data['efi'] = raw_asset['intake'].get('efi')
+    data['efi'] = raw_asset['intake'].get('efi', False)
     data['cpu'] = [x.value for x in jsonpath_rw_ext.parse('$..children[?class="processor"].version').find(raw_asset)]
     try:
         memory = jsonpath_rw_ext.parse('$..children[?id="memory"]').find(raw_asset)[0].value
@@ -799,7 +799,7 @@ def ipmi_reboot(self, asset):
 def ipmi_boot_pxe(self, asset):
     pxe_boot_command = asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'bootdev', 'pxe']
     if asset['asset_type'] == 'server':
-        if asset.get('efi'):
+        if asset.get('efi', False):
             pxe_boot_command.append('options=efiboot')
         try:
             ipmi_command(pxe_boot_command)
