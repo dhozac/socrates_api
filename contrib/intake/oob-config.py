@@ -7,6 +7,7 @@ import re
 import string
 import random
 import time
+import os
 
 def fail_json(msg):
     json.dump({'failed': True, 'msg': msg}, sys.stdout)
@@ -22,7 +23,13 @@ def call_with_output(command, error_msg, input=None, success=[0]):
 def main(system_manufacturer, model, asset_tag, configuration_file):
     configuration = json.load(open(configuration_file, 'r'))
     password = "".join(random.sample(string.letters + string.digits, 19))
+    is_efi = os.path.exists("/sys/firmware/efi")
     if system_manufacturer == 'Dell':
+        # restart srvadmin services, as they frequently crash and/or does not start correctly
+        with open("/dev/null", "r+") as dev_null:
+            subprocess.call(["srvadmin-services.sh", "restart"], stdout=dev_null, stderr=dev_null)
+            time.sleep(300)
+
         replacements = {'password': password, 'empxe': 'off', 'hyperthreading': 'enabled' if configuration.get('hyperthreading', False) else 'disabled', 'intnic': 'disabledos', 'intpxe': 'none'}
         ip_route_rc, ip_route_out, ip_route_err = call_with_output(["ip", "route", "get", "8.8.8.8"], 'Getting default route failed with %(returncode)d:\n%(err)s')
         m = re.search(r" dev ([a-z0-9-_]*) ", ip_route_out)
@@ -53,7 +60,7 @@ cfgDNSRacName=%s
 cfgDNSDomainNameFromDHCP=1
 cfgDNSRegisterRac=1
 [cfgRacTuning]
-cfgRacTunePlugintype=1
+cfgRacTunePlugintype=2
 """ % asset_tag)
         racadm_f.close()
         bios_commands = """
@@ -115,7 +122,7 @@ omconfig chassis pwrmanagement config=profile profile=maxperformance
             devices.sort()
             bootdevices = devices[1].strip('BootSeq=').split(',')
             setboot_rc, setboot_out, setboot_err = call_with_output(["racadm", "set", "BIOS.BiosBootSettings.Bootseq", ",".join(bootdevices)], "Failed to set bootorder via racadm with %(setboot_rc)d:\n%(setboot_out)s%(setboot_err)s")
-            jobqueue_rc, jobqueue_out, jobqueue_err = call_with_output(["racadm", "jobqueue", "create", "BIOS.Setup.1-1", "-r", "none", "-s", "TIME_NOW", "-e", "TIME_NA"], "Failed to schedule BIOS job: %(jobqueue_rc)s\n%(jobqueue_out)s%(jobqueue_err)s",success=range(0, 256))
+            jobqueue_rc, jobqueue_out, jobqueue_err = call_with_output(["racadm", "jobqueue", "create", "BIOS.Setup.1-1", "-r", "none", "-s", "TIME_NOW", "-e", "TIME_NA"], "Failed to schedule BIOS job: %(jobqueue_rc)s\n%(jobqueue_out)s%(jobqueue_err)s", success=range(0, 256))
         bios_config_rc = []
         bios_config_out = []
         bios_config_err = []
@@ -130,6 +137,11 @@ omconfig chassis pwrmanagement config=profile profile=maxperformance
         bios_config_rc.append(rc)
         bios_config_out.append(out)
         bios_config_err.append(err)
+        if is_efi:
+             rc, out, err = call_with_output(["racadm", "set", "BIOS.BiosBootSettings.BootMode", "Uefi"], 'Failed running racadm %(returncode)d:\n%(err)s', success=range(0, 256))
+             bios_config_rc.append(rc)
+             bios_config_out.append(out)
+             bios_config_err.append(err)
 
         json.dump({'success': True, 'failed': False, 'username': 'root', 'password': password, 'msg': 'Configured BIOS/iDRAC', 'log': "\n".join(["\n".join(bios_config_out), "\n".join(bios_config_err)])}, sys.stdout)
 
