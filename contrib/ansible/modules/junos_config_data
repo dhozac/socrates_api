@@ -1,16 +1,17 @@
 #!/usr/bin/env python
-
+from ansible.module_utils.basic import AnsibleModule
 import sys
 import os
 
+
 def main():
     module = AnsibleModule(
-        argument_spec = dict(
-            asset = dict(type='dict', required=True),
-            switch_asset = dict(type='dict', required=True),
-            additional_vlans = dict(type='list', required=False, default=[]),
+        argument_spec=dict(
+            asset=dict(type='dict', required=True),
+            switch_asset=dict(type='dict', required=True),
+            additional_vlans=dict(type='list', required=False, default=[]),
         ),
-        supports_check_mode = True
+        supports_check_mode=True
     )
 
     asset = module.params['asset']
@@ -24,7 +25,7 @@ def main():
     nics = {}
     additional_vlans = asset.get('provision', {}).get('additional_vlans', [port for port in asset_nic_ports_raw.keys() if port not in asset.get('provision', {}).get('vlan', {}).get('ports', [])])
 
-    for interface, port in asset_nic_ports_raw.iteritems():
+    for interface, port in asset_nic_ports_raw.items():
         real_port = port
         if port.endswith('.0'):
             real_port = port[:-2]
@@ -62,7 +63,7 @@ def main():
 
     module.exit_json(changed=False, ansible_facts={'latest_junos': latest_junos, 'nics': nics})
 
+
 # import module snippets
-from ansible.module_utils.basic import *
 if __name__ == "__main__":
     main()
