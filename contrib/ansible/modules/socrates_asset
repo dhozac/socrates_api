@@ -1,20 +1,23 @@
 #!/usr/bin/python -tt
+from ansible.module_utils.basic import AnsibleModule
 import requests
 import datetime
 import json
 import uuid
 
+
 def has_nones(d, prefix=""):
     fields = []
-    for key, value in d.iteritems():
+    for key, value in d.items():
         if isinstance(value, dict):
             fields.extend(has_nones(value, prefix="%s.%s" % (prefix, key)))
         if value is None:
             fields.append(key)
     return fields
 
+
 def dict_diff(d1, d2):
-    for key, val in d1.iteritems():
+    for key, val in d1.items():
         if isinstance(val, dict):
             if dict_diff(val, d2.get(key, {})):
                 return True
@@ -23,43 +26,49 @@ def dict_diff(d1, d2):
             return True
     return False
 
+
+class RequestException(Exception):
+    pass
+
+
 def main():
     module = AnsibleModule(
-        argument_spec = dict(
-            state = dict(type='str', default='present', choices=['present', 'absent']),
-            servers = dict(type='list', default=['sot-example-app1.fqdn.tld', 'sot-example-app2.fqdn.tld', 'sot-example-app3.fqdn.tld']),
-            username = dict(type='str', required=True),
-            password = dict(type='str', required=True, no_log=True),
-            service_tag = dict(type='str'),
-            asset_type = dict(type='str', required=False),
-            parent = dict(type='str', required=False),
-            log = dict(type='str', required=False),
-            owner = dict(type='str', required=False),
-            owner_can_login = dict(type='bool', default=True),
-            managers = dict(type='list', required=False, default=[]),
-            users = dict(type='list', required=False),
-            hyperthreading = dict(type='bool', default=False),
-            os = dict(type='str', required=False),
-            vlan = dict(type='raw', required=False),
-            vlans = dict(type='list', default=[]),
-            hostname = dict(type='str', required=False),
-            ram = dict(type='int', required=False),
-            cpus = dict(type='int', required=False),
-            storage = dict(type='dict', required=False),
-            ldaplocal = dict(type='bool', default=False),
-            wait = dict(type='bool', default=True),
-            wait_event = dict(type='str', default=None),
-            aliases = dict(type='list', default=[]),
-            tasksequence = dict(type='str'),
-            mdtcust = dict(type='str'),
-            asset_subtype = dict(type='str', required=False),
-            nics = dict(type='list', default=[]),
-            hypervisors = dict(type='list', default=[]),
-            url = dict(type='str'),
-            additional_vlans = dict(type='list', default=[]),
-            inventory_id = dict(type='str', required=True),
+        argument_spec=dict(
+            state=dict(type='str', default='present', choices=['present', 'absent']),
+            servers=dict(type='list', default=['sot-example-app1.fqdn.tld', 'sot-example-app2.fqdn.tld', 'sot-example-app3.fqdn.tld']),
+            username=dict(type='str', required=True),
+            password=dict(type='str', required=True, no_log=True),
+            service_tag=dict(type='str'),
+            asset_type=dict(type='str', required=False),
+            parent=dict(type='str', required=False),
+            log=dict(type='str', required=False),
+            owner=dict(type='str', required=False),
+            owner_can_login=dict(type='bool', default=True),
+            managers=dict(type='list', required=False, default=[]),
+            users=dict(type='list', required=False),
+            hyperthreading=dict(type='bool', default=False),
+            os=dict(type='str', required=False),
+            vlan=dict(type='raw', required=False),
+            vlans=dict(type='list', default=[]),
+            hostname=dict(type='str', required=False),
+            ram=dict(type='int', required=False),
+            cpus=dict(type='int', required=False),
+            storage=dict(type='dict', required=False),
+            ldaplocal=dict(type='bool', default=False),
+            wait=dict(type='bool', default=True),
+            wait_event=dict(type='str', default=None),
+            aliases=dict(type='list', default=[]),
+            tasksequence=dict(type='str'),
+            mdtcust=dict(type='str'),
+            asset_subtype=dict(type='str', required=False),
+            nics=dict(type='list', default=[]),
+            hypervisors=dict(type='list', default=[]),
+            url=dict(type='str'),
+            additional_vlans=dict(type='list', default=[]),
+            network=dict(type='dict', required=False),
+            use_port_channel=dict(type='bool', default=False),
         ),
-        supports_check_mode = True
+        supports_check_mode=True
     )
 
     changed = False
@@ -70,6 +79,7 @@ def main():
             'Accept': 'application/json',
         },
     }
+
     def request(method, path, data=None):
         method_fun = getattr(requests, method)
         exc = None
@@ -81,10 +91,12 @@ def main():
                 else:
                     response = method_fun(url, **req_args)
                 if response.status_code >= 500 and response.status_code < 600:
-                    pass
+                    raise RequestException("returned %d: %s" % (response.status_code, response.text))
                 else:
                     return response
             except requests.exceptions.RequestException as e:
+                exc = e
+            except RequestException as e:
                 exc = e
         module.fail_json(msg="Failed to talk to socrates: %s" % exc)
 
@@ -144,11 +156,13 @@ def main():
                         'aliases': module.params['aliases'],
                     },
                     'provisioning': True,
-                    'inventory_id': module.params['inventory_id'],
                 }
-                for tag in ('tasksequence', 'mdtcust'):
+                for tag in ('tasksequence', 'mdtcust', 'additional_vlans'):
                     if module.params[tag]:
                         asset['provision'][tag] = module.params[tag]
+                for tag in ('url', 'network'):
+                    if module.params[tag]:
+                        asset[tag] = module.params[tag]
                 if module.params['users'] is not None:
                     asset['users'] = module.params['users']
                 missing = has_nones(asset)
@@ -178,7 +192,6 @@ def main():
                     'storage': [module.params['storage']],
                     'hypervisors': module.params['hypervisors'],
                     'url': module.params['url'],
-                    'inventory_id': module.params['inventory_id'],
                 }
                 if module.params['users'] is not None:
                     asset['users'] = module.params['users']
@@ -211,11 +224,16 @@ def main():
                         'aliases': module.params['aliases'],
                         'ldaplocal': module.params['ldaplocal'],
                     },
-                    'inventory_id': module.params['inventory_id'],
                 }
+                if asset['asset_type'] == 'server':
+                    update['provision']['use_port_channel'] = module.params['use_port_channel']
+
                 for tag in ('tasksequence', 'mdtcust', 'additional_vlans'):
                     if module.params[tag]:
                         update['provision'][tag] = module.params[tag]
+                for tag in ('url', 'network'):
+                    if module.params[tag]:
+                        update[tag] = module.params[tag]
                 if module.params['users'] is not None:
                     asset['users'] = module.params['users']
                 missing = has_nones(update)
@@ -238,11 +256,9 @@ def main():
                         'service_tag': module.params['service_tag'],
                         'parent': module.params['parent'],
                         'owner': module.params['owner'],
-                        'managers': module.params['managers'],
                         'storage': [module.params['storage']],
                         'hypervisors': module.params['hypervisors'],
                         'url': module.params['url'],
-                        'inventory_id': module.params['inventory_id'],
                     }
                     if module.params['users'] is not None:
                         update['users'] = module.params['users']
@@ -256,10 +272,10 @@ def main():
                                 module.fail_json(msg="Failed to update cluster: %s" % response.content)
                             asset = json.loads(response.content)
                 else:
-                    if (asset['provision']['os'] != module.params['os'] or
-                        asset['provision']['hostname'] != module.params['hostname'] or
-                        asset['provision']['storage']['os'].get('pdisks', []) != module.params['storage']['os'].get('pdisks', []) or
-                        asset['provision']['storage']['os'].get('raid', []) != module.params['storage']['os'].get('raid', [])):
+                    if (asset['provision']['os'] != module.params['os']
+                            or asset['provision']['hostname'] != module.params['hostname']
+                            or asset['provision']['storage']['os'].get('pdisks', []) != module.params['storage']['os'].get('pdisks', [])
+                            or asset['provision']['storage']['os'].get('raid', []) != module.params['storage']['os'].get('raid', [])):
                         module.fail_json(msg="cannot reprovision asset without decommission first (state=absent)")
                     update = {
                         'version': asset['version'],
@@ -276,26 +292,26 @@ def main():
                     }
                     for vlan in asset['provision'].get('vlans', []):
                         for new_vlan in vlans:
-                            if (('cidr' in vlan and 'cidr' in new_vlan and new_vlan['cidr'] == vlan['cidr']) or
-                                ('name' in vlan and 'name' in new_vlan and new_vlan['name'] == vlan['name'])):
+                            if (('cidr' in vlan and 'cidr' in new_vlan and new_vlan['cidr'] == vlan['cidr'])
+                                    or ('name' in vlan and 'name' in new_vlan and new_vlan['name'] == vlan['name'])):
                                 update['provision']['vlans'].append(vlan)
                                 break
                     for new_vlan in vlans:
                         for vlan in asset['provision'].get('vlans', []):
-                            if (('cidr' in new_vlan and 'cidr' in vlan and new_vlan['cidr'] == vlan['cidr']) or
-                                ('name' in new_vlan and 'name' in vlan and new_vlan['name'] == vlan['name'])):
+                            if (('cidr' in new_vlan and 'cidr' in vlan and new_vlan['cidr'] == vlan['cidr'])
+                                    or ('name' in new_vlan and 'name' in vlan and new_vlan['name'] == vlan['name'])):
                                 break
                         else:
                             update['provision']['vlans'].append(new_vlan)
-                    if (update['managers'] != asset.get('managers', []) or
-                        ('name' in update['provision']['vlan'] and 'name' in asset['provision']['vlan'] and
-                         update['provision']['vlan']['name'] != asset['provision']['vlan']['name']) or
-                        ('cidr' in update['provision']['vlan'] and 'cidr' in asset['provision']['vlan'] and
-                         update['provision']['vlan']['cidr'] != asset['provision']['vlan']['cidr']) or
-                        ('ip' in update['provision']['vlan'] and 'ip' in asset['provision']['vlan'] and
-                         update['provision']['vlan']['ip'] != asset['provision']['vlan']['ip']) or
-                        update['provision']['vlans'] != asset['provision'].get('vlans', []) or
-                        dict_diff(module.params['storage'], asset['provision']['storage'])):
+                    if (update['managers'] != asset.get('managers', []) 
+                            or ('name' in update['provision']['vlan'] and 'name' in asset['provision']['vlan']
+                                and update['provision']['vlan']['name'] != asset['provision']['vlan']['name'])
+                            or ('cidr' in update['provision']['vlan'] and 'cidr' in asset['provision']['vlan']
+                                and update['provision']['vlan']['cidr'] != asset['provision']['vlan']['cidr'])
+                            or ('ip' in update['provision']['vlan'] and 'ip' in asset['provision']['vlan']
+                                and update['provision']['vlan']['ip'] != asset['provision']['vlan']['ip'])
+                            or update['provision']['vlans'] != asset['provision'].get('vlans', [])
+                            or dict_diff(module.params['storage'], asset['provision']['storage'])):
                         changed = True
                         if module.params['wait_event'] is None:
                             module.params['wait_event'] = 'reprovisioned'
@@ -320,9 +336,9 @@ def main():
                     module.fail_json(msg="Failed to get events %d: %s" % (response.status_code, response.content))
                 events = json.loads(response.content)
                 for event in events:
-                    if (event['asset_id'] == asset['id'] and
-                        event['event'] == module.params['wait_event'] and
-                        datetime.datetime.strptime(event['timestamp'], "%Y-%m-%dT%H:%M:%S.%fZ") >= start_time):
+                    if (event['asset_id'] == asset['id']
+                            and event['event'] == module.params['wait_event']
+                            and datetime.datetime.strptime(event['timestamp'], "%Y-%m-%dT%H:%M:%S.%fZ") >= start_time):
                         event_found = True
                 path = '/event/feed/?id=%s' % events[-1]['id']
 
@@ -337,7 +353,6 @@ def main():
                     module.fail_json(msg="Failed to delete asset %s: %s" % (module.params['service_tag'], response.content))
         module.exit_json(changed=changed)
 
-# import module snippets
-from ansible.module_utils.basic import *
+
 if __name__ == "__main__":
     main()
