@@ -1,4 +1,4 @@
-#!/usr/bin/python -tt
+#!/usr/bin/env python
 
 import Forti
 import netaddr
