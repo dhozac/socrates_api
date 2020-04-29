@@ -1,20 +1,22 @@
-#!/usr/bin/python -tt
-
+#!/usr/bin/env python
+from ansible.module_utils.basic import AnsibleModule
 import Forti
+import json
 import struct
 import socket
 
+
 def main():
     module = AnsibleModule(
-        argument_spec = dict(
-            url = dict(type='str', required=True),
-            username = dict(type='str', required=True),
-            password = dict(type='str', required=True, no_log=True),
-            device = dict(type='str', required=True),
-            adom = dict(type='str', required=True),
-            output = dict(type='str', required=False),
+        argument_spec=dict(
+            url=dict(type='str', required=True),
+            username=dict(type='str', required=True),
+            password=dict(type='str', required=True, no_log=True),
+            device=dict(type='str', required=True),
+            adom=dict(type='str', required=True),
+            output=dict(type='str', required=False),
         ),
-        supports_check_mode = True
+        supports_check_mode=True
     )
 
     networks = []
@@ -23,9 +25,9 @@ def main():
     mgr.login(module.params['username'], module.params['password'])
 
     interfaces = mgr.get_interfaces(module.params['adom'], module.params['device'],
-        fields=["name", "vdom", "vlanid", "ip", "type", "dhcp-relay-service", "dhcp-relay-ip"],
-        filter=[["status", "==", 1], "&&", ["ip", "!=", ["0.0.0.0", "0.0.0.0"]]]
-    )['result'][0]['data']
+                                    fields=["name", "vdom", "vlanid", "ip", "type", "dhcp-relay-service", "dhcp-relay-ip"],
+                                    filter=[["status", "==", 1], "&&", ["ip", "!=", ["0.0.0.0", "0.0.0.0"]]]
+                                    )['result'][0]['data']
 
     zones = {}
     for zone in mgr.get_zones(module.params['adom'])['result'][0]['data']:
@@ -65,13 +67,11 @@ def main():
         })
 
     if module.params['output']:
-        o = open(module.params['output'], "w")
-        json.dump(networks, o)
-        o.close()
+        with open(module.params['output'], "w+") as fd:
+            json.dump(networks, fd)
 
     module.exit_json(msg="Networks gathered", changed=True, networks=networks)
 
-# import module snippets
-from ansible.module_utils.basic import *
+
 if __name__ == "__main__":
     main()

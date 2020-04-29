@@ -1,23 +1,25 @@
-#!/usr/bin/python -tt
-
+#!/usr/bin/env python
+from ansible.module_utils.basic import AnsibleModule
 import Forti
 import netaddr
 import re
 
+
 def length_to_netmask(length):
     return str(netaddr.IPNetwork("0.0.0.0/%d" % length).netmask)
 
+
 def main():
     module = AnsibleModule(
-        argument_spec = dict(
-            state = dict(type='str', choices=['present', 'absent'], default='present'),
-            endpoint = dict(type='str', required=True),
-            username = dict(type='str', required=True),
-            password = dict(type='str', required=True, no_log=True),
-            adom = dict(type='str', required=True),
-            group = dict(type='dict', required=True),
+        argument_spec=dict(
+            state=dict(type='str', choices=['present', 'absent'], default='present'),
+            endpoint=dict(type='str', required=True),
+            username=dict(type='str', required=True),
+            password=dict(type='str', required=True, no_log=True),
+            adom=dict(type='str', required=True),
+            group=dict(type='dict', required=True),
         ),
-        supports_check_mode = True,
+        supports_check_mode=True,
     )
 
     results = []
@@ -97,7 +99,6 @@ def main():
                     module.fail_json(msg="Failed to delete group", results=results)
         module.exit_json(msg="Group absent", changed=changed, results=results)
 
-# import module snippets
-from ansible.module_utils.basic import *
+
 if __name__ == "__main__":
     main()

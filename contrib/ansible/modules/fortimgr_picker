@@ -1,5 +1,5 @@
-#!/usr/bin/python -tt
-
+#!/usr/bin/env python
+from ansible.module_utils.basic import AnsibleModule
 import Forti
 import netaddr
 import re
@@ -8,20 +8,20 @@ interface_name_re = re.compile(r'[^A-Za-z0-9-_]')
 
 def main():
     module = AnsibleModule(
-        argument_spec = dict(
-            endpoint = dict(type='str', required=True),
-            username = dict(type='str', required=True),
-            password = dict(type='str', required=True, no_log=True),
-            adom = dict(type='str', required=True),
-            vdom = dict(type='str', required=True),
-            device = dict(type='str', required=True),
-            network = dict(type='dict', required=True),
-            vlan_min = dict(type='int', required=False, default=2),
-            vlan_max = dict(type='int', required=False, default=4095),
-            strategy = dict(type='str', required=False, default='last', choices=['first', 'last']),
-            hostname = dict(type='str', required=False),
+        argument_spec=dict(
+            endpoint=dict(type='str', required=True),
+            username=dict(type='str', required=True),
+            password=dict(type='str', required=True, no_log=True),
+            adom=dict(type='str', required=True),
+            vdom=dict(type='str', required=True),
+            device=dict(type='str', required=True),
+            network=dict(type='dict', required=True),
+            vlan_min=dict(type='int', required=False, default=2),
+            vlan_max=dict(type='int', required=False, default=4095),
+            strategy=dict(type='str', required=False, default='last', choices=['first', 'last']),
+            hostname=dict(type='str', required=False),
         ),
-        supports_check_mode = True,
+        supports_check_mode=True,
     )
 
     ids = {}
@@ -33,9 +33,9 @@ def main():
         module.fail_json(msg="Failed to login: %r" % r)
 
     interfaces = mgr.get_interfaces(module.params['adom'], module.params['device'],
-        fields=["name", "vlanid", "ip", "type"],
-        filter=[["status", "==", 1], "&&", ["ip", "!=", ["0.0.0.0", "0.0.0.0"]], "&&", ["vdom", "==", module.params['vdom']]]
-    )['result'][0]['data']
+                                    fields=["name", "vlanid", "ip", "type"],
+                                    filter=[["status", "==", 1], "&&", ["ip", "!=", ["0.0.0.0", "0.0.0.0"]], "&&", ["vdom", "==", module.params['vdom']]]
+                                    )['result'][0]['data']
     vlan_ids = set()
     interface_names = set()
     for interface in interfaces:
@@ -53,10 +53,10 @@ def main():
         zone_names.add(zone['name'])
         if 'interface' in ids:
             for mapping in zone.get('dynamic_mapping') or []:
-                if ('_scope' in mapping and
-                        mapping['_scope'][0]['name'] == module.params['device'] and
-                        mapping['_scope'][0]['vdom'] == module.params['vdom'] and
-                        mapping['local-intf'] == ids['interface']):
+                if ('_scope' in mapping
+                        and mapping['_scope'][0]['name'] == module.params['device']
+                        and mapping['_scope'][0]['vdom'] == module.params['vdom']
+                        and mapping['local-intf'] == ids['interface']):
                     ids['zone'] = zone['name']
 
     changed = any(map(lambda x: x not in ids, ['vlan_id', 'interface', 'zone']))
@@ -64,9 +64,9 @@ def main():
         elsewhere_ids = set(map(lambda x: x['vlan_id'], module.params['network']['domains'].values())) - set([0])
         if len(elsewhere_ids) == 1:
             elsewhere_id = elsewhere_ids.pop()
-            if (elsewhere_id not in vlan_ids and
-                    elsewhere_id > module.params['vlan_min'] and
-                    elsewhere_id < module.params['vlan_max']
+            if (elsewhere_id not in vlan_ids
+                    and elsewhere_id > module.params['vlan_min']
+                    and elsewhere_id < module.params['vlan_max']
                 ):
                 ids['vlan_id'] = elsewhere_id
         if 'vlan_id' not in ids:
@@ -96,7 +96,6 @@ def main():
 
     module.exit_json(msg="IDs picked", changed=changed, **ids)
 
-# import module snippets
-from ansible.module_utils.basic import *
+
 if __name__ == "__main__":
     main()
