@@ -797,12 +797,12 @@ def ipmi_reboot(self, asset):
 
 @shared_task(bind=True)
 def ipmi_boot_pxe(self, asset):
-    pxe_boot_command = asset['service_tag'], asset['oob']['username'], asset['oob']['password'], ['chassis', 'bootdev', 'pxe']
+    pxe_boot_command = ['chassis', 'bootdev', 'pxe']
     if asset['asset_type'] == 'server':
         if asset.get('efi', False):
             pxe_boot_command.append('options=efiboot')
         try:
-            ipmi_command(pxe_boot_command)
+            ipmi_command(asset['service_tag'], asset['oob']['username'], asset['oob']['password'], pxe_boot_command)
         except IPMIException as e:
             self.retry(exc=e, countdown=3, max_retries=40)
     return asset
