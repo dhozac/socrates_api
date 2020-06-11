@@ -118,7 +118,7 @@ class BaseTests(TestCase):
             bonk.tasks.requests = requests_to_testclient(self.client, HTTP_AUTHORIZATION=auth)
             response = self.client.post(reverse('bonk:vrf_list'), data=json.dumps({'vrf': 0, 'name': 'default'}), content_type="application/json", HTTP_AUTHORIZATION=auth)
             self.assertResponse(response, 201)
-            response = self.client.post(reverse('bonk:block_list'), data=json.dumps({'vrf': 0, 'network': '10.0.0.0', 'length': 8, 'announced_by': 'socrates://localhost/firewall'}), content_type="application/json", HTTP_AUTHORIZATION=auth)
+            response = self.client.post(reverse('bonk:block_list'), data=json.dumps({'name': 'test-block', 'vrf': 0, 'network': '10.0.0.0', 'length': 8, 'announced_by': 'socrates://localhost/firewall'}), content_type="application/json", HTTP_AUTHORIZATION=auth)
             self.assertResponse(response, 201)
             response = self.client.post(reverse('bonk:zone_list'), data=json.dumps({'type': 'internal', 'name': 'domain'}), content_type="application/json", HTTP_AUTHORIZATION=auth)
             self.assertResponse(response, 201)
