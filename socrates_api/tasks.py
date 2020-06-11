@@ -444,6 +444,14 @@ def extract_warranty_from_raw(asset):
     asset_update(asset, update)
     return asset
 
+
+def dell_timestamp_to_datetime(timestamp_str):
+    format_str = '%Y-%m-%dT%H:%M:%SZ'
+    if '.' in timestamp_str:
+        format_str = '%Y-%m-%dT%H:%M:%S.%fZ'
+    return pytz.utc.localize(datetime.datetime.strptime(timestamp_str, format_str))
+
+
 def _extract_dell_warranty_from_raw(service_tag):
     conn = get_connection()
     raw_asset = next(r.table("assets_raw").get_all(service_tag, index="service_tag").run(conn))
@@ -451,8 +459,8 @@ def _extract_dell_warranty_from_raw(service_tag):
     if 'warranty' in raw_asset.keys():
         warranty = raw_asset['warranty']
     data = {}
-    if warranty and warranty != "Invalid":
-        raw_entitlements = warranty['AssetEntitlementData']
+    if warranty and not warranty['invalid']:
+        raw_entitlements = warranty.get('entitlements', [])
         entitlements = {}
         next_end_date = None
         for wtype in (5, 11):
@@ -462,49 +470,40 @@ def _extract_dell_warranty_from_raw(service_tag):
                 stype = 'Disks'
             type_end_date = None
             for e in raw_entitlements:
-                if e['ServiceLevelGroup'] == wtype:
-                    current_end_date = pytz.utc.localize(datetime.datetime.strptime(e['EndDate'], "%Y-%m-%dT%H:%M:%S"))
-                    if current_end_date > pytz.utc.localize(datetime.datetime.utcnow()):
+                if e['serviceLevelGroup'] == wtype:
+                    current_end_date = dell_timestamp_to_datetime(e['endDate'])
+                    if current_end_date > datetime.datetime.now(tz=pytz.utc):
                         if not type_end_date or current_end_date > type_end_date:
                             type_end_date = current_end_date
-                            entitlements[stype] = {'description': e['ServiceLevelDescription'], 'end_date': current_end_date}
+                            entitlements[stype] = {'description': e['serviceLevelDescription'], 'end_date': current_end_date}
                             if not next_end_date or current_end_date < next_end_date:
                                 next_end_date = current_end_date
-        if warranty['AssetHeaderData']['OrderNumber']:
-            data['order_number'] = warranty['AssetHeaderData']['OrderNumber']
         data['entitlements'] = entitlements
-        data['shipping_date'] = pytz.utc.localize(datetime.datetime.strptime(warranty['AssetHeaderData']['ShipDate'], "%Y-%m-%dT%H:%M:%S"))
+        data['shipping_date'] = dell_timestamp_to_datetime(warranty['shipDate'])
         data['next_end_date'] = next_end_date
         data['valid'] = True
     else:
         data = {'valid': False}
     return data
 
+
 @shared_task
 def batch_update_warranties_from_vendors():
     _batch_update_warranties_from_dell()
     return True
 
+
 def _batch_update_warranties_from_dell():
     service_tags = list(x['service_tag'] for x in r.table('assets').filter(r.row['state'] != 'deleted').filter({'supportvendor': 'dell'}).run(get_connection()))
     return _call_dell_warranty_api(service_tags)
 
+
 def _call_dell_warranty_api(service_tags):
-    batch = []
-    result = {}
-    for service_tag in service_tags:
-        batch.append(service_tag)
-        if len(batch) >= settings.DELL_API_BATCHSIZE:
-            result.update(_send_dell_warranty_api_batch(batch))
-            batch = []
-            time.sleep(5)
-    if len(batch) > 0:
-        result.update(_send_dell_warranty_api_batch(batch))
+    result = _get_dell_warranties_from_api(service_tags)
     for service_tag, warranty in result.items():
         status = r.table("assets_raw").get_all(service_tag, index="service_tag").update({"warranty": warranty}).run(get_connection())
         if max(status.values()) == 0:
             status = r.table('assets_raw').insert({'service_tag': service_tag, 'warranty': warranty}).run(get_connection())
-        #if status['unchanged'] != 1:
         extract_warranty_from_raw(asset_get(service_tag))
     return result
 
@@ -527,29 +526,50 @@ def _retry_invalid_warranties_from_dell():
     _call_dell_warranty_api(service_tags)
 
 
-def _send_dell_warranty_api_batch(batch):
-    data = {"ID": ','.join(batch)}
-    headers = {"apikey": settings.DELL_API_KEY, "accept" : "application/json", "Content-type" : "application/x-www-form-urlencoded"}
-    for attempt in range(5):
-        req = requests.post(settings.DELL_API_URL, data=data, headers=headers)
-        if req.status_code == requests.codes.ok:
-            result = {}
-            raw = req.json()
-            for item in raw["AssetWarrantyResponse"]:
-                asset_tag = item["AssetHeaderData"]["ServiceTag"]
-                result[asset_tag] = item
-            for item in raw["InvalidBILAssets"]["BadAssets"]:
-                result[item] = "Invalid"
-            for item in raw["InvalidFormatAssets"]["BadAssets"]:
-                result[item] = "Invalid"
-            return result
-        else:
+def _get_dell_oauth2_bearer():
+    rv = False
+    url = settings.DELL_OAUTH2_URL
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    data = {
+        'client_id': settings.DELL_OAUTH2_CLIENTID,
+        'client_secret': settings.DELL_OAUTH2_CLIENTSECRET,
+        'grant_type': 'client_credentials'
+    }
+    r = requests.post(url, headers=headers, data=data)
+    if not r.ok:
+        raise Exception('Dell API oauth2 failed , status code: {0}, text: {1}'.format(r.status_code, r.text))
+
+    rv = r.json()
+    return rv
+
+
+def _get_dell_warranties_from_api(service_tags):
+    rv = {}
+    auth = _get_dell_oauth2_bearer()
+    headers = {'Accept': 'application/json', 'Authorization': '{token_type} {access_token}'.format(**auth)}
+    url = settings.DELL_API_URL
+    batch_size = getattr(settings, 'DELL_API_BATCHSIZE', 100)
+    service_tag_batches = [service_tags[i:i + batch_size] for i in range(0, len(service_tags), batch_size)]
+    for batch in service_tag_batches:
+        batch = set(batch)
+        payload = {'servicetags': ','.join(batch)}
+        for attempt in range(5):
+            r = requests.get(url, headers=headers, params=payload)
+            if r.ok:
+                break
             if attempt < 4:
-                logger.info('Dell Warranty API request failed, status code: %s, attempt: %s, retrying in 5 seconds'%(str(req.status_code), attempt))
+                logger.warning('Failed to communicate with Dell warranty API: status code: {0}, text: {1}, attempt {2} of 4'.format(r.status_code, r.text, attempt))
                 time.sleep(5)
+                continue
             else:
-                logger.warn('Dell Warranty API request failed, status code: %s, attempt: %s, giving up!'%(str(req.status_code), attempt))
-                raise Exception('Trouble connecting to Dell API: Status Code: ' + str(req.status_code) + ' - Message: ' + req.text)
+                raise Exception('Failed to get warranty information from Dell warranty API status code: {0}, text: {1}'.format(r.status_code, r.text))
+
+        for dell_asset in r.json():
+            asset_tag = dell_asset['serviceTag']
+            rv[asset_tag] = dell_asset
+
+    return rv
+
 
 @shared_task
 def update_warranty_from_vendor(asset):
