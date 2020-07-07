@@ -497,10 +497,12 @@ class FirewallAddressGroupDetailView(RethinkAPIMixin, generics.RetrieveUpdateDes
 
 class FirewallRuleSetListCreateView(RethinkAPIMixin, generics.ListCreateAPIView):
     group_filter_fields = ['permissions_read', 'permissions_create', 'permissions_write']
+    public_field = 'public'
     serializer_class = FirewallRuleSetSerializer
     permission_classes = (permissions.IsAuthenticated, RethinkSerializerPermission)
 
 class FirewallRuleSetDetailView(RethinkAPIMixin, generics.RetrieveUpdateDestroyAPIView):
     group_filter_fields = ['permissions_read', 'permissions_create', 'permissions_write']
+    public_field = 'public'
     serializer_class = FirewallRuleSetSerializer
     permission_classes = (permissions.IsAuthenticated, RethinkSerializerPermission)
