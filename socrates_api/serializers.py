@@ -128,9 +128,6 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
     efi = serializers.BooleanField(required=False)
     # Field generated from warranty API
     warranty = WarrantySerializer(required=False)
-    # Timestamps
-    created = serializers.DateTimeField(default=serializers.CreateOnlyDefault(timezone.now))
-    last_updated = serializers.DateTimeField(default=timezone.now)
 
     class Meta(HistorySerializerMixin.Meta):
         abstract = False
