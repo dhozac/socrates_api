@@ -573,7 +573,7 @@ class FirewallAddressSerializer(serializers.Serializer):
     length = serializers.IntegerField(required=False)
     address_group = serializers.CharField(required=False)
     fqdn = serializers.CharField(required=False)
-    user_groups = serializers.ListField(required=False)
+    user_groups = serializers.ListField(child=serializers.CharField(validators=[validate_group_name]), required=False)
 
     def validate_address_group(self, address_group):
         if address_group:
@@ -585,10 +585,11 @@ class FirewallAddressSerializer(serializers.Serializer):
 
     def validate(self, data):
         data = super(FirewallAddressSerializer, self).validate(data)
-        if 'address' not in data and 'address_group' not in data:
-            raise serializers.ValidationError("address or address_group is required")
-        if 'address' in data and 'address_group' in data:
-            raise serializers.ValidationError("only one of address and address_group can be set")
+        address_types = sum([x in data for x in ['address', 'address_group', 'fqdn', 'user_groups']])
+        if address_types == 0:
+            raise serializers.ValidationError("address, address_group, fqdn, or user_groups is required")
+        if address_types > 1:
+            raise serializers.ValidationError("only one of address, address_group, fqdn, and user_groups can be set")
         return data
 
     def resolve(self):
