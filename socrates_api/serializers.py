@@ -956,6 +956,7 @@ class LoadBalancerMemberSerializer(serializers.Serializer):
     port = serializers.IntegerField(required=True)
     ratio = serializers.IntegerField(required=False)
     priority = serializers.IntegerField(required=False)
+    group = serializers.CharField(required=False)
 
 class LoadBalancerIRulePoolSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
@@ -1025,6 +1026,10 @@ class LBURLValidator(URLValidator):
         r'(?:[/?#][^\s]*)?'  # resource path
         r'\Z', re.IGNORECASE)
 
+class LoadBalancerGroupSerializer(serializers.Serializer):
+    name = serializers.CharField(required=True)
+    ratio = serializers.IntegerField(min_value=0, max_value=100, required=True)
+
 class LoadBalancerSerializer(HistorySerializerMixin):
     id = serializers.CharField(required=False)
     cluster = serializers.CharField(required=True)
@@ -1041,6 +1046,7 @@ class LoadBalancerSerializer(HistorySerializerMixin):
     fallback_persistence_profile = serializers.CharField(required=False)
     lb_method = serializers.ChoiceField(choices=LOAD_BALANCING_METHODS, required=False)
     permissions = PermissionsSerializer(required=False)
+    groups = serializers.ListField(child=LoadBalancerGroupSerializer(), required=False)
 
     class Meta(RethinkSerializer.Meta):
         table_name = 'load_balancer'
