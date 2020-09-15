@@ -572,6 +572,8 @@ class FirewallAddressSerializer(serializers.Serializer):
     address = serializers.IPAddressField(required=False)
     length = serializers.IntegerField(required=False)
     address_group = serializers.CharField(required=False)
+    fqdn = serializers.CharField(required=False)
+    user_groups = serializers.ListField(required=False)
 
     def validate_address_group(self, address_group):
         if address_group:
