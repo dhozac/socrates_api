@@ -1901,12 +1901,16 @@ def add_network_ovirt(asset, network):
 def remove_network_ovirt(asset, network):
     api, datacenter, cluster = connect_hypervisor_ovirt(asset)
     name = network['domains'][asset['service_tag']]['name']
-    vnic_profile = api.system_service().vnic_profiles_service().list(name=name)
-    if vnic_profile:
-        api.system_service().vnic_profiles_service().vnic_profile_service(vnic_profile[0].id).remove()
-    network = api.system_service().networks_service().list(name=name)
-    if network:
-        api.system_service().networks_service().network_service(network[0].id).remove()
+    vnic_profiles = [x for x in api.system_service().vnic_profiles_service().list() if x.name == name]
+    for profile in vnic_profiles:
+        logger.info("Removing oVirt vNIC profile %s with ID %s", profile.name, profile.id)
+        api.system_service().vnic_profiles_service().profile_service(profile.id).remove()
+        break
+    ovirt_networks = [x for x in api.system_service().networks_service().list() if x.name == name]
+    for ovirt_net in ovirt_networks:
+        logger.info("Removing oVirt logical network %s with ID %s", ovirt_net.name, ovirt_net.id)
+        api.system_service().networks_service().network_service(ovirt_net.id).remove()
+        break
     api.close()
     return asset
 
