@@ -592,15 +592,6 @@ class FirewallAddressSerializer(serializers.Serializer):
             raise serializers.ValidationError("only one of address, address_group, fqdn, and user_groups can be set")
         return data
 
-    def resolve(self):
-        if 'address' in self.instance:
-            return [self.instance.copy()]
-        elif 'address_group' in self.instance:
-            ret = []
-            for address in FirewallAddressGroupSerializer.get(name=self.instance['address_group'])['addresses']:
-                ret.extend(FirewallAddressSerializer(address).resolve())
-            return ret
-
 class FirewallAddressGroupSerializer(HistorySerializerMixin):
     id = serializers.CharField(required=False)
     name = serializers.CharField(required=True)
@@ -670,14 +661,6 @@ class FirewallRuleSetSerializer(HistorySerializerMixin):
             ('permissions_create', r.row['permissions']['create'], {'multi': True}),
             ('permissions_write', r.row['permissions']['write'], {'multi': True}),
         ]
-
-    def resolve(self):
-        rules = []
-        for ruleset_name in self.instance.get('rulesets', []):
-            ruleset = FirewallRuleSetSerializer(FirewallRuleSetSerializer.get(name=ruleset_name))
-            rules.extend(ruleset.resolve())
-        rules.extend(self.instance['rules'])
-        return rules
 
     def update(self, instance, data):
         from socrates_api.tasks import firewall_apply
