@@ -701,7 +701,7 @@ class FirewallRuleSetSerializer(HistorySerializerMixin):
                     pass
             else:
                 continue
-            firewall_apply.apply_async((asset, network))
+            firewall_apply.apply_async((asset))
         return ruleset
 
     def create_link(self, instance):
@@ -766,7 +766,7 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
                 except:
                     pass
                 else:
-                    firewall_apply.apply_async((asset, network))
+                    firewall_apply.apply_async((asset))
         return network
 
     def delete(self):
