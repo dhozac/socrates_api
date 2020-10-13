@@ -192,7 +192,6 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
 
     def create(self, validated_data):
         data = self._get_instance(validated_data)
-        data['last_updated'] = timezone.now()
         asset = super(AssetSerializer, self).create(data)
         if asset['asset_type'] == 'vm' and asset['state'] == 'ready':
             from socrates_api.tasks import provision_vm, add_to_dns, ipmi_poweron
@@ -210,7 +209,6 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
         if not diff and 'latest_action' not in validated_data:
             return instance
 
-        update['last_updated'] = timezone.now()
         asset = super(AssetSerializer, self).update(instance, validated_data)
         old_asset = instance
 
@@ -306,7 +304,6 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
                'version': self.instance['version'],
                'decommissioning': True,
                'provisioning': False,
-               'last_updated': timezone.now()
            })
         task.apply_async((asset,))
         return True
@@ -332,16 +329,6 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
         if self.instance is not None:
             if self.instance['version'] != value:
                 raise serializers.ValidationError('version=%d is not the expected %d' % (value, self.instance['version']))
-        return value
-
-    def validate_created(self, value):
-        if isinstance(value, str):
-            value = datetime.datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-        if self.instance is not None and 'created' in self.instance:
-            if isinstance(self.instance['created'], str):
-                self.instance['created'] = datetime.datetime.strptime(self.instance['created'][:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
-            if value.strftime("%Y-%m-%dT%H:%M:%S") != self.instance['created'].strftime("%Y-%m-%dT%H:%M:%S"):
-                raise serializers.ValidationError("time travelling denied")
         return value
 
     def validate(self, data):
