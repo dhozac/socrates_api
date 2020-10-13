@@ -1349,42 +1349,21 @@ def remove_network(asset, network):
         if url.scheme == 'ansible':
             return remove_network_ansible(asset, network, url)
 
-def firewall_apply_ansible(asset, url, network, rules, networks):
+def firewall_apply_ansible(asset, url, networks, address_groups, rulesets):
     return run_playbook(asset, url.path.lstrip("/") + "apply.yml",
-        switch=url.netloc.split("@")[-1],
-        extra_vars={'url': url._asdict(), 'network': network, 'rules': rules, 'networks': networks})
+                        switch=url.netloc.split("@")[-1],
+                        extra_vars={'url': url._asdict(), 'networks': networks, 'rulesets': rulesets, 'address_groups': address_groups})
 
 @shared_task
-def firewall_apply(asset, network):
+def firewall_apply(asset):
     if 'url' not in asset:
         return False
-    ruleset = FirewallRuleSetSerializer(FirewallRuleSetSerializer.get(name=network['ruleset']))
-    rules = ruleset.resolve()
-    networks = {}
-    for rule in rules:
-        for k in ['destination_addresses', 'source_addresses']:
-            for ur_address in rule.get(k, []):
-                ur_address['resolved'] = FirewallAddressSerializer(ur_address).resolve()
-                for address in ur_address['resolved']:
-                    try:
-                        a_network = NetworkSerializer.get_by_ip(address['address'])
-                        if a_network['id'] not in networks:
-                            networks[a_network['id']] = a_network
-                        address['network_id'] = a_network['id']
-                    except RethinkObjectNotFound:
-                        pass
-    for other_network in networks.values():
-        if 'ruleset' not in other_network:
-            continue
-        n_ruleset = FirewallRuleSetSerializer(FirewallRuleSetSerializer.get(name=other_network['ruleset']))
-        other_network['resolved_rules'] = n_ruleset.resolve()
-        for rule in other_network['resolved_rules']:
-            for k in ['destination_addresses', 'source_addresses']:
-                for ur_address in rule.get(k, []):
-                    ur_address['resolved'] = FirewallAddressSerializer(ur_address).resolve()
     url = urlparse(asset['url'])
+    address_groups = [a for a in FirewallAddressGroupSerializer.filter()]
+    networks = [n for n in NetworkSerializer.filter()]
+    rulesets = [r for r in FirewallRuleSetSerializer.filter()]
     if url.scheme == 'ansible':
-        return firewall_apply_ansible(asset, url, network, rules, networks)
+        return firewall_apply_ansible(asset, url, networks, address_groups, rulesets)
     return False
 
 def _firewall_group_manage_ansible(asset, name, url, group):
