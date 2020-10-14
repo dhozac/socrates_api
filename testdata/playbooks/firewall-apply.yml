@@ -4,10 +4,13 @@
   gather_facts: no
   tasks:
   - fail: msg="Missing variables"
-    when: rules is not defined or network is not defined
-  - fail: msg="Missing network in rule"
-    when: item.1.resolved.0.network_id is not defined
-    with_subelements:
-    - "{{ rules }}"
-    - destination_addresses
-    - skip_missing: true
+    when: address_groups is not defined or networks is not defined or rulesets is not defined
+  - fail: msg="Missing addresses in address group"
+    when: item.addresses is not defined
+    loop: "{{ address_groups }}"
+  - fail: msg="Missing rules in rulesets"
+    when: item.rules is not defined
+    loop: "{{ rulesets }}"
+  - fail: msg="Missing network in networks"
+    when: item.network is not defined
+    loop: "{{ networks }}"
