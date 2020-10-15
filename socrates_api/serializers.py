@@ -705,6 +705,7 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
     needs_review = serializers.BooleanField(required=False)
     domains = serializers.DictField(child=NetworkDomainSerializer(), required=True)
     ruleset = serializers.CharField(validators=[validate_ruleset_name], required=False)
+    tags = serializers.DictField(required=False)
 
     class Meta(RethinkSerializer.Meta):
         table_name = 'networks'
