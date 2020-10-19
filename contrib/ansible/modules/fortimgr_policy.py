@@ -25,11 +25,11 @@ ANSIBLE_METADATA = {
 
 DOCUMENTATION = '''
 module: fortimgr_policy
-short_description: add policies based on socrates firewall rulesets to fortimanager
+short_description: add/replace policies in fortimanager based on socrates firewall ruleset(s)
 description:
   - module generates addresses, services and policies based on socrates rulesets
-  - generated polices replace current matching policies
-  - be sure to read the source before using this module
+  - generated polices replace all current policies with matching prefix (this behaviour may change)
+  - make sure to read the source before using this module
 requirements:
   - "python >= 3.6"
   - module_utils.network.fortimanager
@@ -128,13 +128,13 @@ def unroll_ruleset(parent_ruleset, rulesets, seen_rulesets=None, rules=None):
     :param rulesets: list of dicts containing socrates rulesets
     :param seen_rulesets: list of ruleset names already collected
     :param rules: rules collected from referenced rulesets
-    :return: dict containing a complete set of referenced ruleset rules
+    :return: list of dicts containing a complete set of referenced ruleset rules
     :rtype: list
     '''
     # set lists on first run to avoid old rules and rulesets duplication
-    if not seen_rulesets:
+    if seen_rulesets is None:
         seen_rulesets = []
-    if not rules:
+    if rules is None:
         rules = []
 
     for rule in parent_ruleset.get('rules', []):
@@ -174,17 +174,38 @@ def gen_networks_rules(networks, rulesets, address_groups):
             for rule in rules:
                 addresses = {'destination_addresses': [], 'source_addresses': []}
                 for k in addresses.keys():
-                    for dest in rule.get(k, []):
-                        if dest.get('address_group'):
-                            for a in get_address_group_addresses(dest['address_group'], address_groups):
-                                addresses[k].append(a)
+                    for addr in rule.get(k, []):
+                        if addr.get('address_group'):
+                            addresses[k].extend([a for a in get_address_group_addresses(addr['address_group'], address_groups)])
                         else:
-                            addresses[k].append(dest)
-                if rule.get('destination_addresses'):
-                    rule['destination_addresses'] = addresses['destination_addresses']
-                if rule.get('source_addresses'):
-                    rule['source_addresses'] = addresses['source_addresses']
+                            addresses[k].append(addr)
+                for k in addresses.keys():
+                    if rule.get(k):
+                        rule[k] = addresses[k]
                 network['expanded_rules'].append(rule)
+
+            if 'announcing' in network.get('tags', []):
+                for a_net in network['tags']['announcing']:
+                    announced_network = copy.deepcopy(network)
+                    announced_network.update(
+                        {'network': a_net['network'], 'length': a_net['length'], 'announced_by': ['{network}/{length}'.format(**network)]}
+                    )
+                    # announced networks should only inherit the parent ruleset
+                    announced_network['expanded_rules'] = []
+                    parent_ruleset = ruleset_map.get(announced_network['ruleset'], {})
+                    for rule in parent_ruleset.get('rules', []):
+                        addresses = {'destination_addresses': [], 'source_addresses': []}
+                        for k in addresses.keys():
+                            for addr in rule.get(k, []):
+                                if addr.get('address_group'):
+                                    addresses[k].extend([a for a in get_address_group_addresses(addr['address_group'], address_groups)])
+                                else:
+                                    addresses[k].append(addr)
+                        for k in addresses.keys():
+                            if rule.get(k):
+                                rule[k] = addresses[k]
+                        announced_network['expanded_rules'].append(rule)
+                    rv.append(announced_network)
             rv.append(network)
 
     return rv
@@ -199,16 +220,16 @@ def get_address_group_addresses(group_name, address_groups, addresses=None):
     :return: list of addresses
     :rtype: list
     '''
-    if not addresses:
+    if addresses is None:
         addresses = []
 
     for address_group in address_groups:
         if address_group['name'] == group_name:
             for address in address_group['addresses']:
-                if address.get('address') and (address.get('length') or address.get('length') == 0):
-                    addresses.append(address)
                 if address.get('address_group'):
                     get_address_group_addresses(address['address_group'], address_groups, addresses)
+                else:
+                    addresses.append(address)
     return addresses
 
 
@@ -224,9 +245,11 @@ def get_ingress_sources(network):
     ingress = [r for r in network['expanded_rules'] if r['type'] == 'ingress']
     for rule in ingress:
         for src in rule.get('source_addresses', []):
-            if src.get('address') and src.get('length'):
-                src_net = '{address}/{length}'.format(**src)
-                rv.append({'cidr': src_net, 'ports': rule.get('destination_ports', [])})
+            if 'address' in src:
+                rv.append({
+                    'net': ipaddress.ip_network("{0}/{1}".format(src['address'], src.get('length', 32)), False),
+                    'ports': rule.get('destination_ports', [])
+                })
     return rv
 
 
@@ -251,7 +274,10 @@ def match_egress_ingress(egress, networks):
     network_map = {}
     for network in networks:
         _name = '{network}/{length}'.format(**network)
-        network_map[_name] = network
+        if _name not in network_map.keys():
+            network_map[_name] = network
+        else:
+            network_map[_name].update(network)
 
     network_objs = [ipaddress.ip_network(k, False) for k in network_map.keys()]
     for dest in destinations:
@@ -265,11 +291,10 @@ def match_egress_ingress(egress, networks):
                 ingress_list = get_ingress_sources(network_map[net_obj.exploded])
 
                 for ig in ingress_list:
-                    ig_net = ipaddress.ip_network(ig['cidr'], False)
                     # if ingress network is unknown, it's auto-matched
-                    if all([not ig_net.subnet_of(n) and not ig_net.supernet_of(n) for n in network_objs]):
+                    if all([not ig['net'].subnet_of(n) and not ig['net'].supernet_of(n) for n in network_objs]):
                         return True
-                    if dest_net.subnet_of(ig_net):
+                    if dest_net.subnet_of(ig['net']):
                         for p in egress.get('destination_ports', []):
                             if p in ig['ports']:
                                 return True
@@ -340,6 +365,43 @@ def get_forti_vdom_policies(module, fmgr):
     return ret
 
 
+def gen_zone_map(module):
+    '''
+    create a network to zone information map from module.params['networks'] and the output of
+    gen_networks_rules as it also potentially contains "announced" networks
+    :param module: ansible module object
+    :return: dict with cidr as keys with vdom and zone(s)
+    :rtype: dict
+    '''
+    rv = {}
+    networks = module.params['networks']
+    networks.extend(gen_networks_rules(networks, module.params['rulesets'], module.params['address_groups']))
+    for network in networks:
+        cidr = '{network}/{length}'.format(**network)
+        # skip if cidr is already in rv
+        if cidr in rv.keys():
+            continue
+
+        for domain in network.get('domains', {}):
+            if network['domains'][domain].get('data'):
+                _vdom = network['domains'][domain]['data'].get('vdom')
+                _zone = network['domains'][domain]['data'].get('zone')
+                if not _vdom or not _zone:
+                    # skip domains without vdom and/or zone
+                    continue
+                if network.get('announced_by', False):
+                    # networks that have the announced_by key will only be added if they're
+                    # in the same vdom as module.params['vdom']
+                    if module.params['vdom'] == _vdom and cidr not in rv.keys():
+                        rv[cidr] = {'zones': [module.params['default_zone'], _zone], 'vdom': _vdom}
+                elif cidr not in rv.keys():
+                    rv[cidr] = {'zones': [_zone], 'vdom': _vdom}
+                else:
+                    continue
+
+    return rv
+
+
 def gen_policies_from_rules(module, network_rules):
     '''
     generate fortimanager style policies from socrates rules.
@@ -359,20 +421,7 @@ def gen_policies_from_rules(module, network_rules):
     default_zone = module.params['default_zone']
     vdom = module.params['vdom']
 
-    network_zone_map = {}
-    for network in module.params['networks']:
-        for d in network.get('domains', {}):
-            if network['domains'][d].get('data'):
-                if network['domains'][d]['data'].get('zone'):
-                    _net = '{network}/{length}'.format(**network)
-                    network_zone_map.update(
-                        {
-                            _net: {
-                                'zone': network['domains'][d]['data']['zone'],
-                                'vdom': network['domains'][d]['data'].get('vdom')
-                            }
-                        }
-                    )
+    network_zone_map = gen_zone_map(module)
 
     policies = []
     network_objects = [ipaddress.ip_network(k) for k in network_zone_map.keys()]
@@ -391,7 +440,7 @@ def gen_policies_from_rules(module, network_rules):
                 for source in rule.get('source_addresses', default_network):
                     src_net = None
                     src_vdom = None
-                    src_zone = default_zone
+                    src_zones = [default_zone]
                     if source.get('address'):
                         s_len = source.get('length', 32)
                         src = '{0}/{1}'.format(source['address'], s_len)
@@ -406,14 +455,14 @@ def gen_policies_from_rules(module, network_rules):
                             if src_net.subnet_of(n):
                                 src_vdom = network_zone_map[n.exploded]['vdom']
                                 if src_vdom == vdom:
-                                    src_zone = network_zone_map[n.exploded]['zone']
+                                    src_zones = network_zone_map[n.exploded]['zones']
 
                     if source.get('fqdn'):
                         src = source['fqdn']
                     for destination in rule.get('destination_addresses', default_network):
                         dest_net = None
                         dest_vdom = None
-                        dest_zone = default_zone
+                        dest_zones = [default_zone]
                         if destination.get('address'):
                             d_len = destination.get('length', 32)
                             dest = '{0}/{1}'.format(destination['address'], d_len)
@@ -429,7 +478,7 @@ def gen_policies_from_rules(module, network_rules):
                                 if dest_net.subnet_of(n):
                                     dest_vdom = network_zone_map[n.exploded]['vdom']
                                     if dest_vdom == vdom:
-                                        dest_zone = network_zone_map[n.exploded]['zone']
+                                        dest_zones = network_zone_map[n.exploded]['zones']
 
                         if destination.get('fqdn'):
                             dest = destination['fqdn']
@@ -448,12 +497,12 @@ def gen_policies_from_rules(module, network_rules):
                             {
                                 'action': rule.get('action', default_action),
                                 'dstaddr': [dest_name],
-                                'dstintf': [dest_zone],
+                                'dstintf': dest_zones,
                                 'global-label': global_label,
                                 'schedule': ['always'],
                                 'service': sorted([s for s in services]),
                                 'srcaddr': [src_name],
-                                'srcintf': [src_zone]
+                                'srcintf': src_zones
                             }
                         )
     rv = [i for i in policies if i not in rv]
