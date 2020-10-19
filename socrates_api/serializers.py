@@ -557,6 +557,7 @@ class OperatingSystemSerializer(RethinkSerializer):
     kickstart = serializers.CharField(required=False, trim_whitespace=False)
     ids = serializers.DictField(required=False)
     minimums = serializers.DictField(required=False)
+    tags = serializers.DictField(required=False)
 
     class Meta(RethinkSerializer.Meta):
         table_name = 'os'
@@ -597,6 +598,7 @@ class FirewallAddressGroupSerializer(HistorySerializerMixin):
     name = serializers.CharField(required=True)
     addresses = serializers.ListField(child=FirewallAddressSerializer(), required=True)
     permissions = PermissionsSerializer(required=False)
+    tags = serializers.DictField(required=False)
 
     class Meta(RethinkSerializer.Meta):
         table_name = 'firewall_address_group'
@@ -652,6 +654,7 @@ class FirewallRuleSetSerializer(HistorySerializerMixin):
     permissions = PermissionsSerializer(required=False)
     rulesets = serializers.ListField(child=serializers.CharField(validators=[validate_ruleset_name]), required=False)
     rules = serializers.ListField(child=FirewallRuleSerializer(), required=True)
+    tags = serializers.DictField(required=False)
 
     class Meta(RethinkSerializer.Meta):
         table_name = 'firewall_rule_set'
@@ -705,6 +708,7 @@ class NetworkSerializer(NeedsReviewMixin, HistorySerializerMixin):
     needs_review = serializers.BooleanField(required=False)
     domains = serializers.DictField(child=NetworkDomainSerializer(), required=True)
     ruleset = serializers.CharField(validators=[validate_ruleset_name], required=False)
+    tags = serializers.DictField(required=False)
 
     class Meta(RethinkSerializer.Meta):
         table_name = 'networks'
@@ -882,6 +886,7 @@ class QuotaSerializer(RethinkSerializer):
     total_ram = serializers.IntegerField(required=True)
     vm_disk = serializers.IntegerField(required=True)
     total_disk = serializers.IntegerField(required=True)
+    tags = serializers.DictField(required=False)
 
     class Meta(RethinkSerializer.Meta):
         table_name = 'quotas'
@@ -956,6 +961,7 @@ class LoadBalancerIRuleSerializer(HistorySerializerMixin):
     code = serializers.CharField(required=True)
     pools = serializers.ListField(child=LoadBalancerIRulePoolSerializer(), required=False)
     permissions = PermissionsSerializer(required=False)
+    tags = serializers.DictField(required=False)
 
     class Meta(RethinkSerializer.Meta):
         table_name = 'load_balancer_irule'
@@ -1033,6 +1039,7 @@ class LoadBalancerSerializer(HistorySerializerMixin):
     lb_method = serializers.ChoiceField(choices=LOAD_BALANCING_METHODS, required=False)
     permissions = PermissionsSerializer(required=False)
     groups = serializers.ListField(child=LoadBalancerGroupSerializer(), required=False)
+    tags = serializers.DictField(required=False)
 
     class Meta(RethinkSerializer.Meta):
         table_name = 'load_balancer'
