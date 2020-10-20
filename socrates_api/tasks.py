@@ -1369,8 +1369,8 @@ def firewall_apply(asset):
 @shared_task
 def firewall_apply_all():
     for asset in AssetSerializer.filter({'asset_subtype': 'firewall'}):
-        firewall_apply.apply_async((asset,))
-    return False
+        if asset.get('url'):
+            firewall_apply.apply_async((asset,))
 
 def _firewall_group_manage_ansible(asset, name, url, group):
     return run_playbook(asset, url.path.lstrip("/") + name + ".yml",
