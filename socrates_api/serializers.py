@@ -653,28 +653,9 @@ class FirewallRuleSetSerializer(HistorySerializerMixin):
         ]
 
     def update(self, instance, data):
-        from socrates_api.tasks import firewall_apply
+        from socrates_api.tasks import firewall_apply_all
         ruleset = super(FirewallRuleSetSerializer, self).update(instance, data)
-        all_rulesets = [ruleset['name']]
-        for ref_ruleset in FirewallRuleSetSerializer.filter(
-                lambda rs: rs.has_fields('rulesets') & rs['rulesets'].contains(ruleset['name'])):
-            all_rulesets.append(ref_ruleset['name'])
-        for network in NetworkSerializer.filter(
-                lambda n: n.has_fields('ruleset') & (r.expr(all_rulesets).contains(n['ruleset']))):
-            for domain in network.get('domains', {}).keys():
-                try:
-                    asset = next(AssetSerializer.filter({
-                        'state': 'in-use',
-                        'asset_type': 'network',
-                        'asset_subtype': 'firewall',
-                        'network': {'device': domain},
-                    }))
-                    break
-                except:
-                    pass
-            else:
-                continue
-            firewall_apply.apply_async((asset,))
+        firewall_apply_all.apply_async()
         return ruleset
 
     def create_link(self, instance):
