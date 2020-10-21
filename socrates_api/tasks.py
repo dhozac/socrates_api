@@ -1103,6 +1103,7 @@ def remove_vm_service_tags(asset, present_service_tags):
         }
         asset_update(asset, update)
 
+@shared_task
 def provision_vm(asset):
     parent_asset = AssetSerializer.get(service_tag=asset['parent'])
     if 'url' in parent_asset and parent_asset['url'].startswith("ansible://"):
