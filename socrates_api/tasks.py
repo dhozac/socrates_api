@@ -1414,7 +1414,7 @@ def _run_load_balancer_playbook(load_balancer, playbook):
     for subasset in urls.values():
         url = urlparse(subasset['url'])
         switch = url.netloc.split("@")[-1]
-        run_playbook(subasset, url.path.lstrip("/") + playbook, switch=switch, extra_vars={'load_balancer': load_balancer, 'irules': irules, 'url': url._asdict()})
+        run_playbook(subasset, url.path.lstrip("/") + playbook, switch=switch, extra_vars={'lbcluster': asset, 'load_balancer': load_balancer, 'irules': irules, 'url': url._asdict()})
 
 @shared_task
 def add_load_balancer(load_balancer):
