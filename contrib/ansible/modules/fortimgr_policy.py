@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import, division, print_function, unicode_literals
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
 from ansible.module_utils.network.fortimanager.fortimanager import FortiManagerHandler
@@ -244,7 +244,7 @@ def get_ingress_sources(network):
     rv = []
     ingress = [r for r in network['expanded_rules'] if r['type'] == 'ingress']
     for rule in ingress:
-        for src in rule.get('source_addresses', []):
+        for src in rule.get('source_addresses', [{"address": "0.0.0.0", "length": 0}]):
             if 'address' in src:
                 rv.append({
                     'net': ipaddress.ip_network("{0}/{1}".format(src['address'], src.get('length', 32)), False),
@@ -265,7 +265,10 @@ def match_egress_ingress(egress, networks):
     rv = False
     destinations = []
     for dest in egress.get('destination_addresses', []):
-        if dest.get('address') and (dest.get('length') or dest.get('length') == 0):
+        if dest.get('address'):
+            # if length is missing, assume length is 32 and set it
+            if 'length' not in dest.keys():
+                dest['length'] = 32
             destinations.append('{address}/{length}'.format(**dest))
 
     if not destinations or not egress.get('destination_ports'):
@@ -414,6 +417,8 @@ def gen_policies_from_rules(module, network_rules):
     :rtype: list
     '''
     rv = []
+    log_traffic = module.params['default_log_traffic']
+    log_traffic_start = module.params['default_log_traffic_start']
     delimiter = module.params['prefix_delimiter']
     address_prefix = module.params['address_name_prefix']
     global_label_prefix = module.params['policy_global_label_prefix']
@@ -424,9 +429,9 @@ def gen_policies_from_rules(module, network_rules):
     network_zone_map = gen_zone_map(module)
 
     policies = []
-    network_objects = [ipaddress.ip_network(k) for k in network_zone_map.keys()]
+    network_objects = [ipaddress.ip_network(k, False) for k in network_zone_map.keys()]
     for cidr in network_rules.keys():
-        own_net = ipaddress.ip_network(cidr)
+        own_net = ipaddress.ip_network(cidr, False)
         default_network = [{'address': str(own_net.network_address), 'length': str(own_net.prefixlen)}]
         for direction in ['egress', 'ingress']:
             for rule in network_rules[cidr].get(direction, []):
@@ -499,6 +504,8 @@ def gen_policies_from_rules(module, network_rules):
                                 'dstaddr': [dest_name],
                                 'dstintf': dest_zones,
                                 'global-label': global_label,
+                                'logtraffic': log_traffic,
+                                'logtraffic-start': log_traffic_start,
                                 'schedule': ['always'],
                                 'service': sorted([s for s in services]),
                                 'srcaddr': [src_name],
@@ -525,7 +532,7 @@ def gen_addresses_from_rules(module, network_rules):
     rv = []
 
     for cidr in network_rules.keys():
-        net_obj = ipaddress.ip_network(cidr)
+        net_obj = ipaddress.ip_network(cidr, False)
         net = {
             'name': delimiter.join([address_prefix, cidr]),
             'type': 'ipmask',
@@ -554,7 +561,7 @@ def gen_addresses_from_rules(module, network_rules):
                 if addr.get('length') is None:
                     addr['length'] = 32
                 a = {'name': '{0}{1}{2}/{3}'.format(address_prefix, delimiter, addr['address'], addr['length']), 'type': 'ipmask'}
-                net_obj = ipaddress.ip_network('{address}/{length}'.format(**addr))
+                net_obj = ipaddress.ip_network('{address}/{length}'.format(**addr), False)
                 a.update({'subnet': [str(net_obj.network_address), str(net_obj.netmask)]})
             if not a.get('name'):
                 continue
@@ -591,40 +598,20 @@ def update_forti_policies(module, fmgr, policies):
 
     base_url = '/pm/config/adom/{0}/pkg/{1}/firewall/policy'.format(module.params['adom'], package)
 
-    # try and figure out which existing policies doesn't exist in the generated policies
-    rm_policies = []
-    for ep in existing_policies:
-        if ep.get('global-label', '_global_label_not_set').split(delimiter)[0] != global_label_prefix:
+    # remove all policies with matching global_label_prefix
+    # before adding anything
+    for existing_policy in existing_policies:
+        if existing_policy.get('global-label', '_global_label_not_set').split(delimiter)[0] != global_label_prefix:
             continue
-        ep_found = False
-        for np in policies:
-            if all([np[k] == ep[k] for k in np.keys()]):
-                ep_found = True
-                break
-        if not ep_found:
-            rm_policies.append(ep)
-
-    for rm_policy in rm_policies:
         if not module.check_mode:
-            url = os.path.join(base_url, '{policyid}'.format(**rm_policy))
-            results = fmgr.process_request(url, rm_policy, FMGRMethods.DELETE)
-            if results[0] != 0:
-                module.fail_json(msg='failed to delete policy {0}'.format(rm_policy['policyid']), policy=rm_policy, response=results)
-            rv['changed'] = True
-
-    # add/replace policies
-    for policy in policies:
-        # check if policy should be removed before adding
-        for existing_policy in existing_policies:
-            if compare_policies(policy, existing_policy):
-                if not module.check_mode:
-                    rm_url = os.path.join(base_url, '{policyid}'.format(**existing_policy))
-                    rm_results = fmgr.process_request(rm_url, existing_policy, FMGRMethods.DELETE)
-                    if rm_results[0] != 0:
-                        module.fail_json(msg='failed to delete policy {0}'.format(existing_policy['policyid']), policy=existing_policy, response=results)
+            rm_url = os.path.join(base_url, '{policyid}'.format(**existing_policy))
+            rm_results = fmgr.process_request(rm_url, existing_policy, FMGRMethods.DELETE)
+            if rm_results[0] != 0:
+                module.fail_json(msg='failed to delete policy {0}'.format(existing_policy['policyid']), policy=existing_policy, response=rm_results)
                 rv['changed'] = True
-                break
 
+    # add generated policies
+    for policy in policies:
         if not module.check_mode:
             url = base_url
             payload = {'data': policy}
@@ -845,14 +832,9 @@ def update_forti(module, fmgr):
         if len(policy_packages.keys()) > 1:
             module.fail_json(msg='more than one policy package returned, refusing to continue', policy_packages=policy_packages)
 
-        package = list(policy_packages.keys())[0]
-        current_policies = []
-        for p in policy_packages[package]:
-            if p.get('global-label'):
-                if p['global-label'].split(delimiter)[0] == global_label_prefix:
-                    current_policies.append(p)
-
-        diff['before']['policies'] = current_policies
+        # since policies will be replaced it makes no sense
+        # to populate diff['before']
+        diff['before']['policies'] = []
         ret = update_forti_policies(module, fmgr, policies)
         diff['after']['policies'] = ret['policies']
         if ret['changed']:
@@ -885,7 +867,9 @@ def main():
             networks=dict(type='list', required=True),
             rulesets=dict(type='list', required=True),
             address_groups=dict(type='list', required=True),
-            default_action=dict(type='str', default='accept')
+            default_action=dict(type='str', default='accept'),
+            default_log_traffic=dict(type='str', choices=['all', 'disable', 'utm'], default='all'),
+            default_log_traffic_start=dict(type='str', choices=['enable', 'disable'], default='disable'),
         ),
         supports_check_mode=True
     )
