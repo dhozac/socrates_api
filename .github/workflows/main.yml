@@ -21,7 +21,7 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
       - name: install and run rethinkdb
         run: |
-          wget http://deb.hozac.com/dhozac/ubuntu/bionic/rethinkdb_2.3.6+15+g8a9687~0_amd64.deb
+          wget http://deb.hozac.com/dhozac/ubuntu/bionic/rethinkdb_2.3.6+15+g8a9687_0_amd64.deb
           sudo dpkg -i ./rethinkdb_2.3.6+15+g8a9687~0_amd64.deb || :
           sudo apt-get install -f -y
           sudo cp /etc/rethinkdb/default.conf.sample /etc/rethinkdb/instances.d/instance1.conf
