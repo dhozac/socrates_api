@@ -620,12 +620,12 @@ class FirewallAddressGroupSerializer(HistorySerializerMixin):
 def validate_firewall_ports(port):
     if ':' in port:
         port_range = port.split(':')
-        if not all([i.isalnum() for i in port_range]):
+        if not all([i.isdigit() for i in port_range]):
             raise serializers.ValidationError('invalid port characters: {0}'.format(port))
         if len(port_range) != 2:
             raise serializers.ValidationError('invalid port range length {0}, required length is 2'.format(len(port_range)))
         return port
-    if not port.isalnum():
+    if not port.isdigit():
         raise serializers.ValidationError('invalid port characters: {0}'.format(port))
     return port
 
