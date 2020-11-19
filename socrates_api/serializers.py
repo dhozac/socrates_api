@@ -617,6 +617,18 @@ class FirewallAddressGroupSerializer(HistorySerializerMixin):
     def create_link(self, instance):
         return reverse('socrates_api:firewall_addressgroup_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
 
+def validate_firewall_ports(port):
+    if ':' in port:
+        port_range = port.split(':')
+        if not all([i.isalnum() for i in port_range]):
+            raise serializers.ValidationError('invalid port characters: {0}'.format(port))
+        if len(port_range) != 2:
+            raise serializers.ValidationError('invalid port range length {0}, required length is 2'.format(len(port_range)))
+        return port
+    if not port.isalnum():
+        raise serializers.ValidationError('invalid port characters: {0}'.format(port))
+    return port
+
 class FirewallRuleSerializer(serializers.Serializer):
     type = serializers.ChoiceField(required=True, choices=['ingress', 'egress'])
     expiration = serializers.DateTimeField(required=False)
@@ -633,18 +645,6 @@ def validate_ruleset_name(name):
     except RethinkObjectNotFound:
         raise serializers.ValidationError("ruleset '%s' does not exist" % name)
     return name
-
-def validate_firewall_ports(port):
-    if ':' in port:
-        port_range = port.split(':')
-        if not all([i.isalnum() for i in port_range]):
-            raise serializersValidationError('invalid port characters: {0}'.format(ports))
-        if len(port_range) != 2:
-            raise serializersValidationError('invalid port range length {0}, required length is 2'.format(len(port_range)))
-        return port
-    if not port.isalnum():
-        raise serializersValidationError('invalid port characters: {0}'.format(port))
-    return port
 
 class FirewallRuleSetSerializer(HistorySerializerMixin):
     id = serializers.CharField(required=False)
