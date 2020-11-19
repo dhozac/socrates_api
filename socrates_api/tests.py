@@ -1259,8 +1259,32 @@ class APITests(BaseTests):
         self.assertResponse(response, 201)
 
         response = self.client.post(reverse('socrates_api:firewall_ruleset_list'), data=json.dumps({
+                'name': 'ruleset_range1',
+                'rules': [
+                    {
+                        'type': 'ingress',
+                        'protocol': 'tcp',
+                        'source_addresses': [
+                            {'vrf': 0, 'address': '10.0.0.0', 'length': 8},
+                        ],
+                        'destination_ports': ['4000:4050'],
+                    },
+                    {
+                        'type': 'egress',
+                        'protocol': 'tcp',
+                        'destination_addresses': [
+                            {'address_group': 'testgroup'},
+                            {'vrf': 0, 'address': '10.0.1.12', 'length': 32},
+                            {'vrf': 0, 'address': '10.0.1.13', 'length': 32},
+                        ],
+                        'destination_ports': [443],
+                    },
+                ]
+            }), content_type="application/json", HTTP_AUTHORIZATION=auth)
+        self.assertResponse(response, 201)
+
+        response = self.client.post(reverse('socrates_api:firewall_ruleset_list'), data=json.dumps({
                 'name': 'ruleset_faulty1',
-                'rulesets': ['ruleset1'],
                 'rules': [
                     {
                         'type': 'ingress',
@@ -1284,8 +1308,7 @@ class APITests(BaseTests):
         self.assertResponse(response, 400)
 
         response = self.client.post(reverse('socrates_api:firewall_ruleset_list'), data=json.dumps({
-                'name': 'ruleset_faulty1',
-                'rulesets': ['ruleset1'],
+                'name': 'ruleset_faulty2',
                 'rules': [
                     {
                         'type': 'ingress',
@@ -1309,8 +1332,7 @@ class APITests(BaseTests):
         self.assertResponse(response, 400)
 
         response = self.client.post(reverse('socrates_api:firewall_ruleset_list'), data=json.dumps({
-                'name': 'ruleset_faulty1',
-                'rulesets': ['ruleset1'],
+                'name': 'ruleset_faulty3',
                 'rules': [
                     {
                         'type': 'ingress',
