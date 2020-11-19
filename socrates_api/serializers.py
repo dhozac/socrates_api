@@ -623,9 +623,9 @@ class FirewallRuleSerializer(serializers.Serializer):
     protocol = serializers.ChoiceField(required=True, choices=['icmp', 'tcp', 'udp'])
     action = serializers.ChoiceField(required=False, choices=['accept', 'deny'])
     source_addresses = serializers.ListField(child=FirewallAddressSerializer(), required=False)
-    source_ports = serializers.ListField(child=serializers.IntegerField(), required=False)
+    source_ports = serializers.ListField(child=serializers.CharField(validators=[validate_firewall_ports]), required=False)
     destination_addresses = serializers.ListField(child=FirewallAddressSerializer(), required=False)
-    destination_ports = serializers.ListField(child=serializers.IntegerField(), required=False)
+    destination_ports = serializers.ListField(child=serializers.CharField(validators=[validate_firewall_ports]), required=False)
 
 def validate_ruleset_name(name):
     try:
@@ -633,6 +633,18 @@ def validate_ruleset_name(name):
     except RethinkObjectNotFound:
         raise serializers.ValidationError("ruleset '%s' does not exist" % name)
     return name
+
+def validate_firewall_ports(port):
+    if ':' in port:
+        port_range = port.split(':')
+        if not all([i.isalnum() for i in port_range]):
+            raise serializersValidationError('invalid port characters: {0}'.format(ports))
+        if len(port_range) != 2:
+            raise serializersValidationError('invalid port range length {0}, required length is 2'.format(len(port_range)))
+        return port
+    if not port.isalnum():
+        raise serializersValidationError('invalid port characters: {0}'.format(port))
+    return port
 
 class FirewallRuleSetSerializer(HistorySerializerMixin):
     id = serializers.CharField(required=False)
