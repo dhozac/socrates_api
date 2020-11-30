@@ -1,8 +1,9 @@
 ---
 name: upload python package
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - v*
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -16,10 +17,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install setuptools wheel twine
-      - name: build and publish
-        env:
-          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+      - name: build
         run: |
           python setup.py sdist bdist_wheel
-          twine upload dist/*
+      - name: publish
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
