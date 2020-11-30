@@ -618,7 +618,7 @@ class FirewallAddressGroupSerializer(HistorySerializerMixin):
         return reverse('socrates_api:firewall_addressgroup_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
 
 def validate_port_number(port):
-    if 0 < port >= 65535:
+    if 0 < port <= 65535:
         return True
     raise serializers.ValidationError('{0} is outside valid port numbers 0, 65535'.format(port))
 
