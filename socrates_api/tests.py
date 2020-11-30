@@ -1267,7 +1267,7 @@ class APITests(BaseTests):
                         'source_addresses': [
                             {'vrf': 0, 'address': '10.0.0.0', 'length': 8},
                         ],
-                        'destination_ports': ['4000:4050'],
+                        'destination_ports': [{'start': 9000, 'end': 9090}],
                     },
                     {
                         'type': 'egress',
@@ -1292,7 +1292,7 @@ class APITests(BaseTests):
                         'source_addresses': [
                             {'vrf': 0, 'address': '10.0.0.0', 'length': 8},
                         ],
-                        'destination_ports': ['8080:808o'],
+                        'destination_ports': [{'start': 8080, 'end': '8090'}],
                     },
                     {
                         'type': 'egress',
@@ -1316,7 +1316,7 @@ class APITests(BaseTests):
                         'source_addresses': [
                             {'vrf': 0, 'address': '10.0.0.0', 'length': 8},
                         ],
-                        'destination_ports': ['8080:8085:9099'],
+                        'destination_ports': [{'start': 8443}],
                     },
                     {
                         'type': 'egress',
@@ -1340,7 +1340,7 @@ class APITests(BaseTests):
                         'source_addresses': [
                             {'vrf': 0, 'address': '10.0.0.0', 'length': 8},
                         ],
-                        'destination_ports': ['8080;8085'],
+                        'destination_ports': [{'start': 41000, 'end': 40000}],
                     },
                     {
                         'type': 'egress',

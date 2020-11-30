@@ -617,17 +617,30 @@ class FirewallAddressGroupSerializer(HistorySerializerMixin):
     def create_link(self, instance):
         return reverse('socrates_api:firewall_addressgroup_detail', kwargs={'slug': instance['name']}, request=self.context.get('request'))
 
-def validate_firewall_ports(port):
-    if ':' in port:
-        port_range = port.split(':')
-        if not all([i.isdigit() for i in port_range]):
-            raise serializers.ValidationError('invalid port characters: {0}'.format(port))
-        if len(port_range) != 2:
-            raise serializers.ValidationError('invalid port range length {0}, required length is 2'.format(len(port_range)))
-        return port
-    if not port.isdigit():
-        raise serializers.ValidationError('invalid port characters: {0}'.format(port))
-    return port
+def validate_port_number(port):
+    if 0 < port >= 65535:
+        return True
+    raise serializers.ValidationError('{0} is outside valid port numbers 0, 65535'.format(port))
+
+def validate_firewall_ports(ports):
+    for port in ports:
+        if not isinstance(port, (dict, int)):
+            raise serializers.ValidationError('Invalid type for port {0}'.format(port))
+        if isinstance(port, int):
+            validate_port_number(port)
+            continue
+        if isinstance(port, dict):
+            for s in ['start', 'end']:
+                if s not in port.keys():
+                    raise serializers.ValidationError('{0} missing in port range'.format(s))
+            if not all([isinstance(port['start'], int), isinstance(port['end'], int)]):
+                raise serializers.ValidationError('Invalid type in {0}'.format(port))
+            if all([validate_port_number(port['start']), validate_port_number(port['end'])]):
+                if port['start'] >= port['end']:
+                    raise serializers.ValidationError('start port cannot be higher than end port')
+                continue
+            raise serializers.ValidationError('{0} is invalid'.format(port))
+    return ports
 
 class FirewallRuleSerializer(serializers.Serializer):
     type = serializers.ChoiceField(required=True, choices=['ingress', 'egress'])
@@ -635,9 +648,9 @@ class FirewallRuleSerializer(serializers.Serializer):
     protocol = serializers.ChoiceField(required=True, choices=['icmp', 'tcp', 'udp'])
     action = serializers.ChoiceField(required=False, choices=['accept', 'deny'])
     source_addresses = serializers.ListField(child=FirewallAddressSerializer(), required=False)
-    source_ports = serializers.ListField(child=serializers.CharField(validators=[validate_firewall_ports]), required=False)
+    source_ports = serializers.ListField(validators=[validate_firewall_ports], required=False)
     destination_addresses = serializers.ListField(child=FirewallAddressSerializer(), required=False)
-    destination_ports = serializers.ListField(child=serializers.CharField(validators=[validate_firewall_ports]), required=False)
+    destination_ports = serializers.ListField(validators=[validate_firewall_ports], required=False)
 
 def validate_ruleset_name(name):
     try:
