@@ -396,6 +396,9 @@ def extract_asset_from_raw(service_tag, final_step=False):
             enclosure_asset.is_valid(raise_exception=True)
             enclosure_asset.save()
 
+    if final_step:
+        post_extraction_tasks.apply_async((service_tag,))
+
     return True
 
 class DoUntilRetriesExceeded(Exception):
@@ -930,6 +933,10 @@ def run_playbook(asset, playbook, **kwargs):
     else:
         inventory = settings.ANSIBLE_INVENTORY
 
+    if not os.path.exists(os.path.join(settings.ANSIBLE_PLAYBOOK_DIR, playbook)):
+        logger.warn('playbook {0} does not exist'.format(os.path.join(settings.ANSIBLE_PLAYBOOK_DIR, playbook)))
+        return asset
+
     p = subprocess.Popen([
         "ansible-playbook",
         "-i", inventory,
@@ -1064,6 +1071,12 @@ def add_to_dns(asset, old_asset=None):
     for alias in old_aliases - now_aliases:
         ipam.cname_remove(asset, alias)
 
+    return asset
+
+@shared_task
+def post_extraction_tasks(service_tag):
+    asset = asset_get(service_tag)
+    run_playbook(asset, 'asset-post-tasks.yml')
     return asset
 
 def remove_ip_from_asset(asset):
