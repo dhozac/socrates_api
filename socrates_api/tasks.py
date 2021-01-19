@@ -397,7 +397,7 @@ def extract_asset_from_raw(service_tag, final_step=False):
             enclosure_asset.save()
 
     if final_step:
-        post_extraction_tasks(service_tag)
+        post_extraction_tasks.apply_async((service_tag,))
 
     return True
 
