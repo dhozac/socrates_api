@@ -671,6 +671,7 @@ class FirewallRuleSetSerializer(HistorySerializerMixin):
     class Meta(RethinkSerializer.Meta):
         table_name = 'firewall_rule_set'
         slug_field = 'name'
+        unique = ['name']
         indices = [
             ('permissions_read', r.row['permissions']['read'], {'multi': True}),
             ('permissions_create', r.row['permissions']['create'], {'multi': True}),
