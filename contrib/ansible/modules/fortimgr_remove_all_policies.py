@@ -108,10 +108,8 @@ def rm_update_policy(module, fmgr, policy, pkg):
     :return: uuid and modified policy (updated or empty when deleted)
     :rtype: dict
     '''
-    url = '/pm/config/adom/{0}/pkg/{1}/firewall/policy'.format(module.params['adom'], pkg, policy['policyid'])
-    rv = {}
+    url = '/pm/config/adom/{0}/pkg/{1}/firewall/policy/{2}'.format(module.params['adom'], pkg, policy['policyid'])
     zone = module.params['zone']
-    fm_method = FMGRMethods.UPDATE
 
     if zone in policy['srcintf']:
         policy['srcintf'].remove(zone)
@@ -121,13 +119,18 @@ def rm_update_policy(module, fmgr, policy, pkg):
 
     if not policy['srcintf'] or not policy['dstintf']:
         fm_method = FMGRMethods.DELETE
+        rv = {}
     else:
+        fm_method = FMGRMethods.UPDATE
         rv = policy
+
+    del policy['obj seq']
+    del policy['_last_session']
 
     if not module.check_mode:
         results = fmgr.process_request(url, policy, fm_method)
         if results[0] != 0:
-            module.fail_json('failed to remove policy (0), fortimanager returned: {1}'.format(policy['policyid'], results))
+            module.fail_json(msg='failed to remove interface from policy {0}, fortimanager returned: {1}'.format(policy['policyid'], results), rv=rv)
 
     return rv
 
@@ -141,7 +144,7 @@ def remove_associated_policies(module, fmgr):
         module.fail_json(msg=pkg)
         return rv
     if len(pkg) > 1:
-        module.fail_json('more than one policy package?! {0}'.format(pkg))
+        module.fail_json(msg='more than one policy package?! {0}'.format(pkg))
     pkg = pkg[0]
 
     policies = get_associated_policies(module, fmgr, pkg['pkg'])

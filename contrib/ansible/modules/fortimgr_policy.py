@@ -248,7 +248,7 @@ def get_ingress_sources(network):
             if 'address' in src:
                 rv.append({
                     'net': ipaddress.ip_network("{0}/{1}".format(src['address'], src.get('length', 32)), False),
-                    'ports': rule.get('destination_ports', [])
+                    'ports': rule.get('destination_ports', None)
                 })
     return rv
 
@@ -271,7 +271,7 @@ def match_egress_ingress(egress, networks):
                 dest['length'] = 32
             destinations.append('{address}/{length}'.format(**dest))
 
-    if not destinations or not egress.get('destination_ports'):
+    if not destinations:
         return rv
 
     network_map = {}
@@ -298,8 +298,10 @@ def match_egress_ingress(egress, networks):
                     if all([not ig['net'].subnet_of(n) and not ig['net'].supernet_of(n) for n in network_objs]):
                         return True
                     if dest_net.subnet_of(ig['net']):
+                        if 'destination_ports' not in egress and ig['ports'] is None:
+                            return True
                         for p in egress.get('destination_ports', []):
-                            if p in ig['ports']:
+                            if ig['ports'] is None or p in ig['ports']:
                                 return True
     return rv
 
@@ -438,11 +440,17 @@ def gen_policies_from_rules(module, network_rules):
                 services = set()
                 if rule['protocol'] == 'icmp':
                     services.add('icmp/4')
-                for port in rule.get('destination_ports', []):
-                    if rule['protocol'] in module.params['service_name_prefixes']:
-                        services.add('{0}/{1}'.format(rule['protocol'], port))
+                elif 'destination_ports' not in rule:
+                    services.add('ALL_{0}'.format(rule['protocol'].upper()))
+                else:
+                    for port in rule.get('destination_ports', []):
+                        if rule['protocol'] in module.params['service_name_prefixes']:
+                            if isinstance(port, dict):
+                                services.add('{0}/{1}-{2}'.format(rule['protocol'], port['start'], port['end']))
+                            elif isinstance(port, int):
+                                services.add('{0}/{1}'.format(rule['protocol'], port))
 
-                for source in rule.get('source_addresses', default_network):
+                for source in rule.get('source_addresses', default_network if direction == 'egress' else [{'address': '0.0.0.0', 'length': 0}]):
                     src_net = None
                     src_vdom = None
                     src_zones = [default_zone]
@@ -461,6 +469,10 @@ def gen_policies_from_rules(module, network_rules):
                                 src_vdom = network_zone_map[n.exploded]['vdom']
                                 if src_vdom == vdom:
                                     src_zones = network_zone_map[n.exploded]['zones']
+                            elif src_net.supernet_of(n):
+                                src_vdom = network_zone_map[n.exploded]['vdom']
+                                if src_vdom == vdom:
+                                    src_zones.extend(network_zone_map[n.exploded]['zones'])
 
                     if source.get('fqdn'):
                         src = source['fqdn']
@@ -682,9 +694,15 @@ def gen_updated_services(module, fmgr):
                         services.append(service)
                 for port in rule.get('destination_ports', []):
                     if rule.get('protocol') in ['tcp', 'udp']:
-                        service_name = '{0}/{1}'.format(rule['protocol'], port)
                         port_key = '{0}-portrange'.format(rule['protocol'])
-                        service = {'name': service_name, port_key: [str(port)], 'protocol': 'TCP/UDP/SCTP'}
+                        if isinstance(port, int):
+                            service_name = '{0}/{1}'.format(rule['protocol'], port)
+                            forti_porti = str(port)
+                        elif isinstance(port, dict):
+                            service_name = '{0}/{1}-{2}'.format(rule['protocol'], port['start'], port['end'])
+                            forti_porti = '{0}-{1}'.format(port['start'], port['end'])
+
+                        service = {'name': service_name, port_key: [forti_porti], 'protocol': 'TCP/UDP/SCTP'}
                         if service not in services:
                             services.append(service)
 
