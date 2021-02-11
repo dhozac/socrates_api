@@ -67,7 +67,7 @@ jsonpath_rw_ext.parser.ExtendedJsonPathLexer.t_FILTER_OP += r'|\^='
 jsonpath_rw_ext._filter.OPERATOR_MAP['^='] = lambda x, y: x.startswith(y)
 
 @shared_task(bind=True)
-def extract_asset_from_raw(service_tag, final_step=False):
+def extract_asset_from_raw(self, service_tag, final_step=False):
     conn = get_connection()
     raw_asset = next(r.table("assets_raw").get_all(service_tag, index="service_tag").run(conn))
     data = {}
