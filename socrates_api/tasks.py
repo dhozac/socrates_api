@@ -43,7 +43,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.module_loading import import_string
 from email.mime.text import MIMEText
-from django_rethink import r, get_connection, RethinkObjectNotFound
+from django_rethink import r, get_connection, RethinkObjectNotFound, SimultaneousObjectManipulationException
 from socrates_api.serializers import *
 from socrates_api.ipam import IPAMIPNotFoundException
 from tempfile import NamedTemporaryFile
@@ -66,13 +66,13 @@ def ipv4_network_contains(cidr, ip):
 jsonpath_rw_ext.parser.ExtendedJsonPathLexer.t_FILTER_OP += r'|\^='
 jsonpath_rw_ext._filter.OPERATOR_MAP['^='] = lambda x, y: x.startswith(y)
 
-@shared_task
+@shared_task(bind=True)
 def extract_asset_from_raw(service_tag, final_step=False):
     conn = get_connection()
     raw_asset = next(r.table("assets_raw").get_all(service_tag, index="service_tag").run(conn))
     data = {}
     data['efi'] = raw_asset['intake'].get('efi', False)
-    data['cpu'] = [x.value for x in jsonpath_rw_ext.parse('$..children[?class="processor"].version').find(raw_asset)]
+    data['cpu'] = [x.value for x in jsonpath_rw_ext.parse('$..children[?class="processor"].product').find(raw_asset)]
     try:
         memory = jsonpath_rw_ext.parse('$..children[?id="memory"]').find(raw_asset)[0].value
     except IndexError:
@@ -368,7 +368,11 @@ def extract_asset_from_raw(service_tag, final_step=False):
         serializer = AssetSerializer(instance, data=data)
 
     serializer.is_valid(raise_exception=True)
-    serializer.save()
+
+    try:
+        serializer.save()
+    except SimultaneousObjectManipulationException as e:
+        self.retry(exc=e, countdown=1, max_retries=5)
 
     for enclosure in enclosures:
         try:
@@ -416,7 +420,7 @@ def do_until(c, ic=None, wait=5, retries=12):
 
 @shared_task
 def extract_warranty_from_raw(asset):
-    update = {'log' : 'Updating warranty from raw'}
+    update = {'log': 'Updating warranty from raw'}
     if 'supportvendor' in asset.keys() and asset['supportvendor'] == 'dell':
         try:
             update['warranty'] = _extract_dell_warranty_from_raw(asset['service_tag'])
