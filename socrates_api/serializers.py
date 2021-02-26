@@ -341,7 +341,10 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
             new_asset = dict_merge(self.instance, data)
         else:
             new_asset = data
-        diff = dict_differences(new_asset, self.instance)
+        if self.instance is not None:
+            diff = dict_differences(new_asset, self.instance)
+        else:
+            diff = new_asset
         username = self.get_username()
         if self.instance is not None and username is not None:
             if self.instance.get('maintenance', False) and data.get('provisioning', False):
