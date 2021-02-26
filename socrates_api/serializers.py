@@ -220,8 +220,8 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
                 task = add_to_dns.s(old_asset) | asset_update.s({'provisioning': False, 'log': 'Reconfigured networking'}) | reconfigure_network_port.s() | event_emit.s('reprovisioned')
                 task.apply_async((asset,))
             # Shortcut for managing VM disk changes online
-            elif (asset['state'] == 'in-use' and asset['asset_type'] == 'vm' and diff.get('provision', {}).keys() == ['storage'] and
-                  all(map(lambda x: x.keys() == ['size'], diff['provision']['storage'].values()))):
+            elif (asset['state'] == 'in-use' and asset['asset_type'] == 'vm' and list(diff.get('provision', {}).keys()) == ['storage'] and
+                  all([list(x.keys()) == ['size'] for x in diff['provision']['storage'].values()])):
                 from socrates_api.tasks import provision_vm, asset_update, event_emit
                 task = provision_vm.s() | asset_update.s({'provisioning': False, 'log': 'Extended disks'}) | event_emit.s('reprovisioned')
                 task.apply_async((asset,))
