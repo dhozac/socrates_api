@@ -341,6 +341,7 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
             new_asset = dict_merge(self.instance, data)
         else:
             new_asset = data
+        diff = dict_differences(new_asset, self.instance)
         username = self.get_username()
         if self.instance is not None and username is not None:
             if self.instance.get('maintenance', False) and data.get('provisioning', False):
@@ -529,8 +530,8 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
                         # This ensures the same disk can only be used once
                         pdisks[controller_id].remove(pdisk['id'])
         else:
-            if 'provision' in data and new_asset['state'] == "in-use" and self.instance is not None and (new_asset['asset_type'] != "vm" or username is not None) and not self.instance.get('provisioning', False) and not new_asset.get('provisioning', False) and not new_asset.get('decommissioning', False):
-                raise serializers.ValidationError("Cannot update 'provision' without provisioning set")
+            if 'provision' in diff and new_asset['state'] == "in-use" and self.instance is not None and (new_asset['asset_type'] != "vm" or username is not None) and not self.instance.get('provisioning', False) and not new_asset.get('provisioning', False) and not new_asset.get('decommissioning', False):
+                raise serializers.ValidationError("cannot update 'provision' without provisioning set")
         return data
 
     def create_link(self, instance):
