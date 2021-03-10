@@ -296,7 +296,7 @@ def extract_asset_from_raw(self, service_tag, final_step=False):
 
     if 'raid-config' in raw_asset and raw_asset['raid-config'].get('success', False) and raw_asset['raid-config']['timestamp'] > (time.time() - 3600):
         for vdisk, by_id in raw_asset['raid-config']['vdisks_by_id'].items():
-            if vdisk in instance['provision']['storage'] and 'by_id' not in instance['provision']['storage'][vdisk]:
+            if vdisk in instance['provision']['storage']:
                 if 'provision' not in data:
                     data['provision'] = {}
                 if 'storage' not in data['provision']:
