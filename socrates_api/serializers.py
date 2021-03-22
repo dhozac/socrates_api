@@ -281,6 +281,8 @@ class AssetSerializer(NeedsReviewMixin, HistorySerializerMixin):
 
         if self.instance.get('decommissioning', False):
             raise serializers.ValidationError("delete is already in progress")
+        if self.instance['state'] == 'deleted':
+            raise serializers.ValidationError("asset is already deleted")
         if self.instance.get('needs_review', False):
             raise serializers.ValidationError("'needs_review' field cannot be set when deleting an asset")
 
