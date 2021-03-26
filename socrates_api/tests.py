@@ -170,6 +170,7 @@ class BaseTests(TestCase):
                 'asset_subtype': 'switch',
                 'parent': 'R1',
                 'service_tag': 'switch',
+                'provision': {'hostname': 'switch'},
                 'url': 'ansible://localhost/switch-',
                 'switch': {'domain': 'qfabric', 'port_regexp': 'Port Description TLV\\s+(?P<interface>\\S+)\\s+'},
                 'log': 'Create switch'
@@ -182,6 +183,7 @@ class BaseTests(TestCase):
                 'asset_subtype': 'firewall',
                 'parent': 'R1',
                 'service_tag': 'firewall',
+                'provision': {'hostname': 'firewall'},
                 'url': 'ansible://localhost/firewall-',
                 'network': {'device': 'firewall'},
                 'nics': [{'name': 'nic1', 'remote': {'domain': 'qfabric', 'port': '1'}}],
